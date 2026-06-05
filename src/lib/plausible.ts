@@ -9,11 +9,7 @@ export function isPlausibleConfigured(): boolean {
 
 export interface LinkStats {
   opened: boolean;
-  visitors: number;
-  visits: number;
-  pageviews: number;
-  visitDurationSec: number; // average session duration
-  bounceRate: number; // percent
+  views: number; // pageviews (deck + artifact loads) — event-level, correctly token-scoped
   lastSeen: string | null; // YYYY-MM-DD (day granularity)
   furthestSlide: number; // max slide_index from Slide Reached
   slides: { slide: string; views: number }[]; // per-slide view counts (desc)
@@ -36,20 +32,27 @@ async function query(body: QueryBody): Promise<{ results: Row[] }> {
   return r.json();
 }
 
-/** Lifetime per-link stats for one token on a given Plausible site. */
+/**
+ * Lifetime per-link stats for one token on a given Plausible site.
+ *
+ * IMPORTANT: only EVENT-LEVEL metrics (pageviews, events) can be filtered by an
+ * event-level custom property like `token`. Session-level metrics (visit_duration,
+ * bounce_rate, visits, visitors) are NOT correctly scoped by `event:props:token` —
+ * Plausible returns the site-wide value — so we deliberately do not use them here.
+ */
 export async function getLinkStats(siteId: string, token: string): Promise<LinkStats> {
   const tokenFilter = ["is", "event:props:token", [token]];
   const base = { site_id: siteId, date_range: "all" as const };
 
   const [agg, byDay, reached, slideViews, artifact] = await Promise.all([
-    query({ ...base, metrics: ["visitors", "visits", "pageviews", "visit_duration", "bounce_rate"], filters: [tokenFilter] }),
-    query({ ...base, metrics: ["visitors"], dimensions: ["time:day"], filters: [tokenFilter] }),
+    query({ ...base, metrics: ["pageviews"], filters: [tokenFilter] }),
+    query({ ...base, metrics: ["pageviews"], dimensions: ["time:day"], filters: [tokenFilter] }),
     query({ ...base, metrics: ["events"], dimensions: ["event:props:slide_index"], filters: [tokenFilter, ["is", "event:name", ["Slide Reached"]]] }),
     query({ ...base, metrics: ["events"], dimensions: ["event:props:slide"], filters: [tokenFilter, ["is", "event:name", ["Slide View"]]] }),
     query({ ...base, metrics: ["events"], filters: [tokenFilter, ["is", "event:name", ["Section View"]], ["is", "event:props:section", ["artifact"]]] }),
   ]);
 
-  const m = agg.results[0]?.metrics ?? [0, 0, 0, 0, 0];
+  const views = agg.results[0]?.metrics?.[0] ?? 0;
 
   let lastSeen: string | null = null;
   for (const row of byDay.results) {
@@ -68,12 +71,8 @@ export async function getLinkStats(siteId: string, token: string): Promise<LinkS
     .sort((a, b) => b.views - a.views);
 
   return {
-    opened: (m[0] ?? 0) > 0,
-    visitors: m[0] ?? 0,
-    visits: m[1] ?? 0,
-    pageviews: m[2] ?? 0,
-    visitDurationSec: Math.round(m[3] ?? 0),
-    bounceRate: Math.round(m[4] ?? 0),
+    opened: views > 0,
+    views,
     lastSeen,
     furthestSlide,
     slides,

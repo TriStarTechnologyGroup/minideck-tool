@@ -21,11 +21,7 @@ export type LinkRow = {
 
 type Stats = {
   opened: boolean;
-  visitors: number;
-  visits: number;
-  pageviews: number;
-  visitDurationSec: number;
-  bounceRate: number;
+  views: number;
   lastSeen: string | null;
   furthestSlide: number;
   slides: { slide: string; views: number }[];
@@ -33,13 +29,6 @@ type Stats = {
 };
 
 type Cell = { state: "loading" | "ok" | "error"; stats?: Stats };
-
-function fmtDuration(s: number): string {
-  if (!s) return "0s";
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return m ? `${m}m ${sec}s` : `${sec}s`;
-}
 
 export default function LinkTable({
   rows,
@@ -124,10 +113,8 @@ export default function LinkTable({
                 <th className="px-3 py-2 font-medium">Company</th>
                 <th className="px-3 py-2 font-medium">Link</th>
                 <th className="px-3 py-2 font-medium">Opened</th>
-                <th className="px-3 py-2 font-medium">Visits</th>
+                <th className="px-3 py-2 font-medium">Views</th>
                 <th className="px-3 py-2 font-medium">Last seen</th>
-                <th className="px-3 py-2 font-medium">Time</th>
-                <th className="px-3 py-2 font-medium">Bounce</th>
                 <th className="px-3 py-2 font-medium">Slide depth</th>
                 <th className="px-3 py-2 font-medium">Artifact</th>
                 <th className="px-3 py-2 font-medium">Created</th>
@@ -166,10 +153,8 @@ export default function LinkTable({
                       </div>
                     </td>
                     <td className="px-3 py-2">{stat(s?.opened ? "Yes" : "No")}</td>
-                    <td className="px-3 py-2">{stat(s ? s.visits : null)}</td>
+                    <td className="px-3 py-2">{stat(s ? s.views : null)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs">{stat(s?.lastSeen ?? "—")}</td>
-                    <td className="px-3 py-2">{stat(s ? fmtDuration(s.visitDurationSec) : null)}</td>
-                    <td className="px-3 py-2">{stat(s ? `${s.bounceRate}%` : null)}</td>
                     <td className="px-3 py-2">
                       {stat(
                         s ? (
@@ -213,7 +198,7 @@ export default function LinkTable({
 
       <p className="mt-2 text-xs text-neutral-400">
         {plausibleOn
-          ? "Stats from Plausible (cached ~60s). “Slide depth” = furthest slide reached; expand for per-slide view counts. Per-slide seconds aren’t available from Plausible."
+          ? "Stats from Plausible (cached ~60s). “Views” = page loads; “Slide depth” = furthest slide reached (expand for per-slide views); “Artifact” = opened the data page. (Time-on-page/bounce aren’t shown — Plausible can’t scope those session-level metrics to a per-link token.)"
           : "Plausible isn’t configured — engagement stats are hidden."}
       </p>
     </div>
