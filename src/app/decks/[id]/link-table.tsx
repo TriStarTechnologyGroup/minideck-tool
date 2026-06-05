@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import CopyButton from "./copy-button";
 import HubspotRetry from "./hubspot-retry";
@@ -140,15 +141,16 @@ export default function LinkTable({
                 return (
                   <tr key={r.id} className="align-top">
                     <td className="px-3 py-2">
-                      {r.contact?.hubspot_url ? (
-                        <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                          {r.contact.name}
-                        </a>
-                      ) : (
-                        r.contact?.name ?? "—"
-                      )}
+                      <Link href={`/links/${r.token}`} className="font-medium hover:underline">
+                        {r.contact?.name ?? "—"} →
+                      </Link>
                       <div className="flex items-center gap-2 text-xs text-neutral-500">
                         <span>{r.contact?.email}</span>
+                        {r.contact?.hubspot_url && (
+                          <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            HubSpot ↗
+                          </a>
+                        )}
                         {hubspotOn && r.contact && !r.contact.hubspot_id && (
                           <HubspotRetry contactId={r.contact.id} />
                         )}
