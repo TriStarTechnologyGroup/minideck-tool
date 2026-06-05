@@ -26,9 +26,19 @@ type Stats = {
   furthestSlide: number;
   slides: { slide: string; views: number }[];
   artifactViews: number;
+  timeSeconds: number;
+  artifactSeconds: number;
+  perSlideSeconds: Record<string, number>;
 };
 
 type Cell = { state: "loading" | "ok" | "error"; stats?: Stats };
+
+function fmtDuration(s: number): string {
+  if (!s) return "0s";
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m ? `${m}m ${sec}s` : `${sec}s`;
+}
 
 export default function LinkTable({
   rows,
@@ -115,6 +125,7 @@ export default function LinkTable({
                 <th className="px-3 py-2 font-medium">Opened</th>
                 <th className="px-3 py-2 font-medium">Views</th>
                 <th className="px-3 py-2 font-medium">Last seen</th>
+                <th className="px-3 py-2 font-medium">Time</th>
                 <th className="px-3 py-2 font-medium">Slide depth</th>
                 <th className="px-3 py-2 font-medium">Artifact</th>
                 <th className="px-3 py-2 font-medium">Created</th>
@@ -155,6 +166,7 @@ export default function LinkTable({
                     <td className="px-3 py-2">{stat(s?.opened ? "Yes" : "No")}</td>
                     <td className="px-3 py-2">{stat(s ? s.views : null)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs">{stat(s?.lastSeen ?? "—")}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{stat(s ? fmtDuration(s.timeSeconds) : null)}</td>
                     <td className="px-3 py-2">
                       {stat(
                         s ? (
@@ -177,7 +189,10 @@ export default function LinkTable({
                             s.slides.map((sl) => (
                               <div key={sl.slide} className="flex justify-between gap-3 text-xs text-neutral-500">
                                 <span>{sl.slide}</span>
-                                <span>{sl.views}</span>
+                                <span>
+                                  {sl.views} view{sl.views === 1 ? "" : "s"}
+                                  {s.perSlideSeconds[sl.slide] ? ` · ${fmtDuration(s.perSlideSeconds[sl.slide])}` : ""}
+                                </span>
                               </div>
                             ))
                           )}
@@ -198,8 +213,8 @@ export default function LinkTable({
 
       <p className="mt-2 text-xs text-neutral-400">
         {plausibleOn
-          ? "Stats from Plausible (cached ~60s). “Views” = page loads; “Slide depth” = furthest slide reached (expand for per-slide views); “Artifact” = opened the data page. (Time-on-page/bounce aren’t shown — Plausible can’t scope those session-level metrics to a per-link token.)"
-          : "Plausible isn’t configured — engagement stats are hidden."}
+          ? "“Views/Slide depth/Artifact” are page-load counts from Plausible (cached ~60s). “Time” is engaged time-on-deck from our own collector (counts only while the tab is visible, so a left-open background tab doesn’t inflate it). Expand “Slide depth” for per-slide views + seconds."
+          : "Plausible isn’t configured — counts are hidden; “Time” still works via the engagement collector."}
       </p>
     </div>
   );

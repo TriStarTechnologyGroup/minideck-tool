@@ -3,28 +3,25 @@
  * Pairs with Plausible's MANUAL base script (script.manual.pageview-props.tagged-events.js).
  * Dependency-free, safe to load twice. No PII — only the opaque `token`.
  *
- * What it does:
- *   1. Resolves the prospect token (?t=, persisted to localStorage, same-origin so the
- *      /data/ artifact page recovers it automatically).
- *   2. Fires ONE Plausible pageview tagged { token, deck } so native metrics
- *      (visit duration, bounce, visits) are filterable per link.
- *   3. Carousel decks: emits `Slide Reached` (furthest-slide depth) + `Slide View`
- *      (per-slide seconds) by observing <article class="slide"> elements.
- *   4. Artifact page (no carousel): emits `Section View` { section:"artifact", seconds }.
- *
- * Slide slugs are centralized here (keyed by deck) so the deck repos need no per-slide
- * markup; an optional data-slide="..." on an <article> overrides the map.
+ * Plausible (counts): tagged pageview, `Slide Reached` (depth), `Slide View` (per-slide
+ *   view counts), `Section View` (artifact opened).
+ * Engagement collector (true time): measures ENGAGED time — only while the page is visible,
+ *   so a left-open background tab does NOT inflate it — and beacons cumulative seconds
+ *   (total + per-slide) to /api/ingest on a 15s heartbeat and on hide/unload. Plausible
+ *   cannot scope session duration to a per-link token, so time-on-page comes from here.
  */
 (function () {
   "use strict";
   if (window.__tristarTracker) return; // safe to load twice
   window.__tristarTracker = true;
 
-  var el =
-    document.currentScript || document.querySelector("script[data-deck]");
+  var el = document.currentScript || document.querySelector("script[data-deck]");
   var deck = (el && el.getAttribute("data-deck")) || "";
+  var ingestUrl = "https://decks.tristargroup.us/api/ingest";
+  try {
+    if (el && el.src) ingestUrl = new URL(el.src).origin + "/api/ingest";
+  } catch {}
 
-  // --- token resolution -----------------------------------------------------
   function resolveToken() {
     if (window.TRISTAR_TOKEN) return window.TRISTAR_TOKEN;
     try {
@@ -42,7 +39,6 @@
   }
   var token = resolveToken();
 
-  // Plausible queue stub (the deck page defines one too; this is a fallback).
   window.plausible =
     window.plausible ||
     function () {
@@ -61,40 +57,12 @@
   // 1. Manual pageview (tagged). In manual mode nothing fires unless we do.
   fire("pageview");
 
-  // No token → organic/untracked visit. Pageview recorded; stop.
+  // No token → organic/untracked visit. Pageview recorded; stop (no engagement beacons).
   if (!token) return;
 
-  // --- slide slug taxonomy (keyed by deck slug) -----------------------------
   var SLIDES = {
-    hbs: [
-      "overview",
-      "advanced-disease",
-      "longitudinal",
-      "primary-mets",
-      "pre-post-soc",
-      "pre-post-io",
-      "stats",
-      "cta",
-    ],
-    "ai-cohorts": [
-      "overview",
-      "imaging-clinical-data",
-      "donor-profiles",
-      "cohorts-available",
-      "positioning",
-      "repository",
-      "core-partner",
-      "scanning-capabilities",
-      "stats",
-      "advanced-disease",
-      "longitudinal",
-      "longitudinal-nsclc",
-      "primary-mets",
-      "pre-post-soc",
-      "pre-post-io",
-      "ffpe-tma-plasma",
-      "cta",
-    ],
+    hbs: ["overview", "advanced-disease", "longitudinal", "primary-mets", "pre-post-soc", "pre-post-io", "stats", "cta"],
+    "ai-cohorts": ["overview", "imaging-clinical-data", "donor-profiles", "cohorts-available", "positioning", "repository", "core-partner", "scanning-capabilities", "stats", "advanced-disease", "longitudinal", "longitudinal-nsclc", "primary-mets", "pre-post-soc", "pre-post-io", "ffpe-tma-plasma", "cta"],
   };
 
   function slugFor(article, index) {
@@ -104,23 +72,67 @@
     if (map && map[index]) return map[index];
     var title = article.querySelector(".slide__title");
     if (title) {
-      return title.textContent
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
+      return title.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     }
     return "slide-" + (index + 1);
   }
 
+  // ── Engagement (visible-only) time ────────────────────────────────────────
+  var surface = "deck";
+  var engagedMs = 0;
+  var visStart = document.visibilityState === "visible" ? Date.now() : null;
+  var curSlide = null;
+  var curSlideStart = null;
+  var slideMs = {};
+
+  function bank() {
+    var now = Date.now();
+    if (visStart != null) {
+      engagedMs += now - visStart;
+      visStart = now;
+    }
+    if (curSlide != null && curSlideStart != null) {
+      slideMs[curSlide] = (slideMs[curSlide] || 0) + (now - curSlideStart);
+      curSlideStart = now;
+    }
+  }
+
+  function setActiveSlide(slug) {
+    bank();
+    curSlide = slug;
+    curSlideStart = visStart != null ? Date.now() : null;
+  }
+
+  function beacon() {
+    bank();
+    var per = {};
+    for (var k in slideMs)
+      if (Object.prototype.hasOwnProperty.call(slideMs, k)) per[k] = Math.round(slideMs[k] / 1000);
+    var data = JSON.stringify({
+      token: token,
+      surface: surface,
+      seconds: Math.round(engagedMs / 1000),
+      perSlide: per,
+    });
+    try {
+      if (navigator.sendBeacon) navigator.sendBeacon(ingestUrl, new Blob([data], { type: "text/plain" }));
+      else fetch(ingestUrl, { method: "POST", body: data, keepalive: true, headers: { "Content-Type": "text/plain" } });
+    } catch {}
+  }
+
   function start() {
-    var slides = Array.prototype.slice.call(
-      document.querySelectorAll("article.slide"),
-    );
+    var slides = Array.prototype.slice.call(document.querySelectorAll("article.slide"));
+    surface = slides.length ? "deck" : "artifact";
 
     if (slides.length && "IntersectionObserver" in window) {
-      var reached = {}; // slug -> true (Slide Reached fired once per visit)
-      var enterAt = {}; // index -> ms when it became the active slide
+      var reached = {};
+      var enterAt = {};
+
+      function emitView(idx, slug) {
+        var secs = Math.round((Date.now() - enterAt[idx]) / 1000);
+        enterAt[idx] = null;
+        if (secs > 0) fire("Slide View", { slide: slug, slide_index: String(idx + 1), seconds: String(secs) });
+      }
 
       var io = new IntersectionObserver(
         function (entries) {
@@ -131,12 +143,10 @@
             if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
               if (!reached[slug]) {
                 reached[slug] = true;
-                fire("Slide Reached", {
-                  slide: slug,
-                  slide_index: String(idx + 1),
-                });
+                fire("Slide Reached", { slide: slug, slide_index: String(idx + 1) });
               }
               enterAt[idx] = Date.now();
+              setActiveSlide(slug); // engagement: this slide is now active
             } else if (enterAt[idx] != null) {
               emitView(idx, slug);
             }
@@ -144,31 +154,28 @@
         },
         { threshold: [0, 0.5, 1] },
       );
-
-      function emitView(idx, slug) {
-        var secs = Math.round((Date.now() - enterAt[idx]) / 1000);
-        enterAt[idx] = null;
-        if (secs > 0)
-          fire("Slide View", {
-            slide: slug,
-            slide_index: String(idx + 1),
-            seconds: String(secs),
-          });
-      }
-
       slides.forEach(function (s) {
         io.observe(s);
       });
-      // No pagehide/visibilitychange flush on purpose: a tab left open would otherwise
-      // emit a late `Slide View` and inflate Plausible's visit_duration (session length =
-      // first→last event). Slide Views fire on each slide change (IntersectionObserver
-      // exit) during active use; the last-viewed slide still counts via `Slide Reached`.
     } else {
-      // Artifact / data page — no carousel. Register the open IMMEDIATELY on load:
-      // exit-fired events (pagehide/visibilitychange) often don't flush before the page
-      // goes away, so "artifact opened?" was being missed. The table only needs Yes/No.
+      // Artifact / data page — register the open immediately (reliable Yes/No).
       fire("Section View", { section: "artifact", seconds: "0" });
     }
+
+    // Engagement listeners (both surfaces).
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        bank();
+        visStart = null;
+        curSlideStart = null;
+        beacon();
+      } else {
+        visStart = Date.now();
+        if (curSlide != null) curSlideStart = Date.now();
+      }
+    });
+    window.addEventListener("pagehide", beacon);
+    setInterval(beacon, 15000); // heartbeat so dwell is captured without a clean exit
   }
 
   if (document.readyState === "loading") {
