@@ -171,21 +171,10 @@
         if (document.visibilityState === "hidden") flush();
       });
     } else {
-      // Artifact / data page — no carousel. Time total dwell, emit on exit.
-      var start = Date.now();
-      var sent = false;
-      function sendArtifact() {
-        if (sent) return;
-        sent = true;
-        fire("Section View", {
-          section: "artifact",
-          seconds: String(Math.round((Date.now() - start) / 1000)),
-        });
-      }
-      window.addEventListener("pagehide", sendArtifact);
-      document.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "hidden") sendArtifact();
-      });
+      // Artifact / data page — no carousel. Register the open IMMEDIATELY on load:
+      // exit-fired events (pagehide/visibilitychange) often don't flush before the page
+      // goes away, so "artifact opened?" was being missed. The table only needs Yes/No.
+      fire("Section View", { section: "artifact", seconds: "0" });
     }
   }
 
