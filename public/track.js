@@ -156,20 +156,13 @@
           });
       }
 
-      function flush() {
-        Object.keys(enterAt).forEach(function (idx) {
-          if (enterAt[idx] != null)
-            emitView(Number(idx), slugFor(slides[idx], Number(idx)));
-        });
-      }
-
       slides.forEach(function (s) {
         io.observe(s);
       });
-      window.addEventListener("pagehide", flush);
-      document.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "hidden") flush();
-      });
+      // No pagehide/visibilitychange flush on purpose: a tab left open would otherwise
+      // emit a late `Slide View` and inflate Plausible's visit_duration (session length =
+      // first→last event). Slide Views fire on each slide change (IntersectionObserver
+      // exit) during active use; the last-viewed slide still counts via `Slide Reached`.
     } else {
       // Artifact / data page — no carousel. Register the open IMMEDIATELY on load:
       // exit-fired events (pagehide/visibilitychange) often don't flush before the page
