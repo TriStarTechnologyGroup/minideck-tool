@@ -5,6 +5,7 @@ import { contactLinkInput } from "@/lib/contacts";
 import { newToken, buildLinkUrl } from "@/lib/token";
 import { serverEnv } from "@/lib/env.server";
 import { isHubspotConfigured, upsertContact, createLinkNote, buildContactUrl } from "@/lib/hubspot";
+import { logAudit } from "@/lib/audit";
 
 // POST /api/contacts
 // Upsert a contact by email, reuse-or-create the link for (deck, contact), then
@@ -110,5 +111,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (!reused) {
+    await logAudit({ actorId: guard.profile.id, actorEmail: guard.profile.email, action: "link.create", targetType: "link", target: link.token, detail: { email, deckId } });
+  }
   return NextResponse.json({ link, reused, hubspotWarning }, { status: reused ? 200 : 201 });
 }

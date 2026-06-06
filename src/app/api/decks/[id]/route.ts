@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiAdmin } from "@/lib/api";
 import { deckPatch } from "@/lib/decks";
+import { logAudit } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -30,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
   if (!data) return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+  await logAudit({ actorId: guard.profile.id, actorEmail: guard.profile.email, action: "deck.update", targetType: "deck", target: data.slug, detail: parsed.data });
   return NextResponse.json({ deck: data });
 }
 
@@ -42,5 +44,6 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
   const admin = createAdminClient();
   const { error } = await admin.from("decks").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  await logAudit({ actorId: guard.profile.id, actorEmail: guard.profile.email, action: "deck.delete", targetType: "deck", target: id });
   return NextResponse.json({ ok: true });
 }

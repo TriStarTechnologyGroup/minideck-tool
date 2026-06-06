@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiUser, requireApiAdmin } from "@/lib/api";
 import { deckInput } from "@/lib/decks";
 import { captureAndStore } from "@/lib/screenshot";
+import { logAudit } from "@/lib/audit";
 
 // GET /api/decks — list decks (any authenticated user)
 export async function GET() {
@@ -57,5 +58,6 @@ export async function POST(req: NextRequest) {
     // ignore — re-capture available from the edit screen
   }
 
+  await logAudit({ actorId: guard.profile.id, actorEmail: guard.profile.email, action: "deck.create", targetType: "deck", target: deck.slug });
   return NextResponse.json({ deck, screenshot: captured ? "ok" : "failed" }, { status: 201 });
 }

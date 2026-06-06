@@ -27,9 +27,14 @@ export default async function AppHeader() {
               Leads
             </Link>
             {isAdmin && (
-              <Link href="/admin/users" className="font-medium text-white/90 transition-colors hover:text-primary">
-                Users
-              </Link>
+              <>
+                <Link href="/admin/users" className="font-medium text-white/90 transition-colors hover:text-primary">
+                  Users
+                </Link>
+                <Link href="/admin/audit" className="font-medium text-white/90 transition-colors hover:text-primary">
+                  Audit
+                </Link>
+              </>
             )}
           </nav>
         </div>

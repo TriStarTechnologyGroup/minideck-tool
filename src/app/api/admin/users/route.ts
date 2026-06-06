@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiAdmin } from "@/lib/api";
 import { listUsers, createUser, createUserSchema } from "@/lib/admin-users";
+import { logAudit } from "@/lib/audit";
 
 // GET /api/admin/users — list all users (admin only)
 export async function GET() {
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { id, tempPassword } = await createUser(parsed.data.email, parsed.data.role);
+    await logAudit({ actorId: guard.profile.id, actorEmail: guard.profile.email, action: "user.create", targetType: "user", target: parsed.data.email, detail: { role: parsed.data.role } });
     return NextResponse.json({ id, email: parsed.data.email, role: parsed.data.role, tempPassword }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not create user";

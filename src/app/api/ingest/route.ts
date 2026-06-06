@@ -7,6 +7,7 @@ import {
   createEngagementTask,
   updateContactProperties,
 } from "@/lib/hubspot";
+import { rateLimit } from "@/lib/rate-limit";
 
 // POST /api/ingest — PUBLIC engagement beacon from track.js (sendBeacon, text/plain).
 // Body: { token, surface:"deck"|"artifact", seconds, perSlide }. Cumulative (max-seen).
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest) {
 
   const token = typeof body.token === "string" ? body.token : "";
   if (!/^[0-9A-Za-z]{4,32}$/.test(token)) return noContent();
+  // Basic abuse protection: cap beacons per token (heartbeat is ~4/min; this allows bursts).
+  if (!rateLimit(`ingest:${token}`, 60, 60_000)) return noContent();
   const surface = body.surface === "artifact" ? "artifact" : "deck";
   const seconds = clamp(body.seconds);
 
