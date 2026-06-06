@@ -41,6 +41,10 @@ function fmtDuration(s: number): string {
   return m ? `${m}m ${sec}s` : `${sec}s`;
 }
 
+function Skel({ w = "w-8" }: { w?: string }) {
+  return <span className={`inline-block h-3 ${w} animate-pulse rounded bg-surface-muted align-middle`} />;
+}
+
 export default function LinkTable({
   rows,
   hubspotOn,
@@ -81,6 +85,15 @@ export default function LinkTable({
     loadStats();
   }, [loadStats]);
 
+  // Render a stat value: em-dash when Plausible off/errored, skeleton while loading.
+  function val(cell: Cell | undefined, render: (s: Stats) => React.ReactNode, skelW?: string): React.ReactNode {
+    if (!plausibleOn) return "—";
+    if (!cell || cell.state === "loading") return <Skel w={skelW} />;
+    if (cell.state === "error" || !cell.stats) return "—";
+    return render(cell.stats);
+  }
+  const depth = (s: Stats) => (slideTotal ? `${s.furthestSlide} / ${slideTotal}` : String(s.furthestSlide));
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
@@ -89,7 +102,7 @@ export default function LinkTable({
         </h2>
         {plausibleOn && rows.length > 0 && (
           <div className="flex items-center gap-2 text-xs text-ink-muted">
-            {refreshedAt && <span>updated {refreshedAt}</span>}
+            {refreshedAt && <span className="hidden sm:inline">updated {refreshedAt}</span>}
             <button type="button" onClick={loadStats} disabled={loading} className="btn btn-ghost btn-xs">
               {loading ? "Refreshing…" : "Refresh stats"}
             </button>
@@ -98,79 +111,128 @@ export default function LinkTable({
       </div>
 
       {rows.length === 0 ? (
-        <p className="card px-6 py-10 text-center text-sm text-ink-muted">
+        <p className="card px-6 py-12 text-center text-sm text-ink-muted">
           No links yet. Use the form above to create one.
         </p>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-              <tr>
-                <th className="px-3 py-2.5 font-medium">Contact</th>
-                <th className="px-3 py-2.5 font-medium">Company</th>
-                <th className="px-3 py-2.5 font-medium">Link</th>
-                <th className="px-3 py-2.5 font-medium">Opened</th>
-                <th className="px-3 py-2.5 font-medium">Views</th>
-                <th className="px-3 py-2.5 font-medium">Last seen</th>
-                <th className="px-3 py-2.5 font-medium">Time</th>
-                <th className="px-3 py-2.5 font-medium">Slide depth</th>
-                <th className="px-3 py-2.5 font-medium">Artifact</th>
-                <th className="px-3 py-2.5 font-medium">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.map((r) => {
-                const cell = cells[r.token];
-                const s = cell?.state === "ok" ? cell.stats : undefined;
-                const stat = (v: React.ReactNode) =>
-                  !plausibleOn ? "—" : cell?.state === "loading" ? "…" : cell?.state === "error" ? "—" : v;
-                return (
-                  <tr key={r.id} className="align-top transition-colors hover:bg-surface-subtle">
-                    <td className="px-3 py-2.5">
+        <>
+          {/* Desktop: table */}
+          <div className="card hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
+                <tr>
+                  <th className="px-3 py-2.5 font-medium">Contact</th>
+                  <th className="px-3 py-2.5 font-medium">Company</th>
+                  <th className="px-3 py-2.5 font-medium">Link</th>
+                  <th className="px-3 py-2.5 font-medium">Opened</th>
+                  <th className="px-3 py-2.5 font-medium">Views</th>
+                  <th className="whitespace-nowrap px-3 py-2.5 font-medium">Last seen</th>
+                  <th className="px-3 py-2.5 font-medium">Time</th>
+                  <th className="whitespace-nowrap px-3 py-2.5 font-medium">Slide depth</th>
+                  <th className="px-3 py-2.5 font-medium">Artifact</th>
+                  <th className="px-3 py-2.5 font-medium">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((r) => {
+                  const cell = cells[r.token];
+                  return (
+                    <tr key={r.id} className="align-top transition-colors hover:bg-surface-subtle">
+                      <td className="px-3 py-2.5">
+                        <Link href={`/links/${r.token}`} className="font-medium text-ink hover:text-link">
+                          {r.contact?.name ?? "—"} →
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs text-ink-muted">
+                          <span className="truncate">{r.contact?.email}</span>
+                          {r.contact?.hubspot_url && (
+                            <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-link hover:underline">
+                              HubSpot ↗
+                            </a>
+                          )}
+                          {hubspotOn && r.contact && !r.contact.hubspot_id && <HubspotRetry contactId={r.contact.id} />}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-ink-muted">{r.contact?.company ?? "—"}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <code className="max-w-[12rem] truncate text-xs text-ink-muted">{r.full_url}</code>
+                          <CopyButton value={r.full_url} />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-ink">{val(cell, (s) => (s.opened ? "Yes" : "No"))}</td>
+                      <td className="px-3 py-2.5 text-ink">{val(cell, (s) => s.views)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">{val(cell, (s) => s.lastSeen ?? "—", "w-16")}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-ink">{val(cell, (s) => fmtDuration(s.timeSeconds))}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-ink">{val(cell, depth)}</td>
+                      <td className="px-3 py-2.5 text-ink">{val(cell, (s) => (s.artifactViews > 0 ? "Yes" : "No"))}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">
+                        {new Date(r.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile / tablet: cards */}
+          <div className="space-y-3 lg:hidden">
+            {rows.map((r) => {
+              const cell = cells[r.token];
+              return (
+                <div key={r.id} className="card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <Link href={`/links/${r.token}`} className="font-medium text-ink hover:text-link">
                         {r.contact?.name ?? "—"} →
                       </Link>
-                      <div className="flex items-center gap-2 text-xs text-ink-muted">
-                        <span>{r.contact?.email}</span>
-                        {r.contact?.hubspot_url && (
-                          <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="text-link hover:underline">
-                            HubSpot ↗
-                          </a>
-                        )}
-                        {hubspotOn && r.contact && !r.contact.hubspot_id && <HubspotRetry contactId={r.contact.id} />}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-ink-muted">{r.contact?.company ?? "—"}</td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <code className="max-w-[13rem] truncate text-xs text-ink-muted">{r.full_url}</code>
-                        <CopyButton value={r.full_url} />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-ink">{stat(s?.opened ? "Yes" : "No")}</td>
-                    <td className="px-3 py-2.5 text-ink">{stat(s ? s.views : null)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">{stat(s?.lastSeen ?? "—")}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-ink">{stat(s ? fmtDuration(s.timeSeconds) : null)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-ink">
-                      {stat(s ? (slideTotal ? `${s.furthestSlide} / ${slideTotal}` : String(s.furthestSlide)) : null)}
-                    </td>
-                    <td className="px-3 py-2.5 text-ink">{stat(s ? (s.artifactViews > 0 ? "Yes" : "No") : null)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">
-                      {new Date(r.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <p className="truncate text-xs text-ink-muted">{r.contact?.email}</p>
+                      {r.contact?.company && <p className="truncate text-xs text-ink-muted">{r.contact.company}</p>}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
+                      {r.contact?.hubspot_url && (
+                        <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="text-link hover:underline">
+                          HubSpot ↗
+                        </a>
+                      )}
+                      {hubspotOn && r.contact && !r.contact.hubspot_id && <HubspotRetry contactId={r.contact.id} />}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 truncate rounded-sm bg-surface-subtle px-2 py-1 text-xs text-ink-muted">{r.full_url}</code>
+                    <CopyButton value={r.full_url} />
+                  </div>
+
+                  <dl className="mt-3 grid grid-cols-3 gap-3 border-t border-line pt-3 text-sm">
+                    <Stat label="Opened" v={val(cell, (s) => (s.opened ? "Yes" : "No"))} />
+                    <Stat label="Views" v={val(cell, (s) => s.views)} />
+                    <Stat label="Time" v={val(cell, (s) => fmtDuration(s.timeSeconds))} />
+                    <Stat label="Depth" v={val(cell, depth)} />
+                    <Stat label="Artifact" v={val(cell, (s) => (s.artifactViews > 0 ? "Yes" : "No"))} />
+                    <Stat label="Last seen" v={val(cell, (s) => s.lastSeen ?? "—", "w-16")} />
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       <p className="mt-2 text-xs text-ink-muted/70">
         {plausibleOn
-          ? "Counts (views, depth, opened, artifact) from Plausible; “Time” is engaged time-on-deck (visible-only) from our collector. Click a contact for the per-slide breakdown and follow-up insights."
+          ? "Counts (views, depth, opened, artifact) from Plausible; “Time” is engaged time-on-deck (visible-only) from our collector. Tap a contact for the per-slide breakdown and follow-up insights."
           : "Plausible isn’t configured — counts are hidden; “Time” still works via the engagement collector."}
       </p>
+    </div>
+  );
+}
+
+function Stat({ label, v }: { label: string; v: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-[0.65rem] uppercase tracking-wide text-ink-muted/70">{label}</dt>
+      <dd className="mt-0.5 text-ink">{v}</dd>
     </div>
   );
 }
