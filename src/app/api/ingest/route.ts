@@ -19,7 +19,7 @@ const noContent = () => new NextResponse(null, { status: 204 });
 const APP = serverEnv.APP_BASE_URL || "https://decks.tristargroup.us";
 
 export async function POST(req: NextRequest) {
-  let body: { token?: unknown; surface?: unknown; seconds?: unknown; perSlide?: Record<string, unknown> };
+  let body: { token?: unknown; surface?: unknown; seconds?: unknown; perSlide?: Record<string, unknown>; kind?: unknown; event?: unknown };
   try {
     body = JSON.parse(await req.text());
   } catch {
@@ -46,6 +46,48 @@ export async function POST(req: NextRequest) {
   const contact = link.contact as unknown as
     | { id: string; first_name: string; last_name: string; hubspot_id: string | null }
     | null;
+
+  // ── CTA-click beacon (book-a-meeting / inquire / etc.) — strongest intent signal ──
+  if (body.kind === "cta") {
+    const event = typeof body.event === "string" ? body.event : "";
+    if (!/^cta_[a-z0-9_]+$/.test(event)) return noContent();
+
+    const { data: ex } = await admin
+      .from("link_engagement")
+      .select("cta_clicks, first_seen_at")
+      .eq("token", token)
+      .maybeSingle();
+
+    const clicks: Record<string, number> = { ...((ex?.cta_clicks as Record<string, number>) ?? {}) };
+    const wasFirst = !clicks[event];
+    clicks[event] = (clicks[event] ?? 0) + 1;
+    const nowTs = new Date().toISOString();
+    const highIntent = event === "cta_book_meeting" || event === "cta_inquire";
+
+    if (wasFirst && highIntent && isHubspotConfigured() && contact?.hubspot_id && deck) {
+      const name = `${contact.first_name} ${contact.last_name}`.trim() || "A prospect";
+      const label = event === "cta_book_meeting" ? "clicked “Book a meeting”" : "clicked “Inquire”";
+      try {
+        await createEngagementTask(
+          contact.hubspot_id,
+          `🔥 ${name} ${label} — ${deck.name}`,
+          `${name} ${label} on ${deck.name}. This is a top-priority follow-up.\n${APP}/links/${token}`,
+        );
+        await updateContactProperties(contact.hubspot_id, {
+          minideck_last_cta: event,
+          minideck_last_viewed: String(Date.now()),
+          minideck_last_deck: deck.name,
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    await admin
+      .from("link_engagement")
+      .upsert({ token, cta_clicks: clicks, first_seen_at: ex?.first_seen_at ?? nowTs, updated_at: nowTs }, { onConflict: "token" });
+    return noContent();
+  }
 
   const { data: existing } = await admin
     .from("link_engagement")

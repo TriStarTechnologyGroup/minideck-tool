@@ -65,6 +65,9 @@ export default async function LinkDetailPage({ params }: { params: Promise<{ tok
   }
 
   const insights: string[] = [];
+  // CTA clicks are the strongest signal — surface first.
+  if (stats.ctaClicks?.cta_book_meeting) insights.push("Clicked “Book a meeting” — top intent. Prioritize this follow-up.");
+  else if (stats.ctaClicks?.cta_inquire) insights.push("Clicked “Inquire” — strong intent; respond promptly.");
   if (stats.lastSeen) {
     const d = daysAgo(stats.lastSeen);
     insights.push(d === 0 ? "Engaged today — strike while it’s fresh." : `Last engaged ${d} day${d === 1 ? "" : "s"} ago.${d >= 7 ? " Going cold — worth a nudge." : ""}`);
@@ -123,6 +126,10 @@ export default async function LinkDetailPage({ params }: { params: Promise<{ tok
         <Card label="Slide depth" value={N ? `${stats.furthestSlide} / ${N}` : String(stats.furthestSlide)} sub={N ? `${depthPct}%` : undefined} />
         <Card label="Reached CTA" value={reachedCta ? "Yes" : "No"} />
         <Card label="Artifact page" value={stats.artifactViews > 0 ? "Yes" : "No"} sub={stats.artifactSeconds ? fmtDuration(stats.artifactSeconds) : undefined} />
+        <Card
+          label="CTA clicked"
+          value={stats.ctaClicks?.cta_book_meeting ? "Book meeting" : stats.ctaClicks?.cta_inquire ? "Inquire" : "—"}
+        />
       </div>
 
       {/* Follow-up insights */}

@@ -15,6 +15,7 @@ const props = [
     options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }] },
   { name: "minideck_artifact_opened", label: "Minideck — Opened data page", type: "enumeration", fieldType: "booleancheckbox",
     options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }] },
+  { name: "minideck_last_cta", label: "Minideck — Last CTA clicked", type: "string", fieldType: "text" },
 ];
 
 const ok = (m) => console.log(`\x1b[32m✓\x1b[0m ${m}`);

@@ -60,6 +60,25 @@
   // No token → organic/untracked visit. Pageview recorded; stop (no engagement beacons).
   if (!token) return;
 
+  // CTA-click capture: the decks fire data-event="cta_*" on Book-a-meeting / Inquire / etc.
+  // Beacon those to /api/ingest (highest-intent signal). Capture phase so it fires before
+  // any navigation (e.g. mailto links).
+  document.addEventListener(
+    "click",
+    function (e) {
+      var el = e.target && e.target.closest && e.target.closest("[data-event]");
+      if (!el) return;
+      var name = el.getAttribute("data-event") || "";
+      if (name.indexOf("cta_") !== 0) return;
+      try {
+        var data = JSON.stringify({ token: token, kind: "cta", event: name });
+        if (navigator.sendBeacon) navigator.sendBeacon(ingestUrl, new Blob([data], { type: "text/plain" }));
+        else fetch(ingestUrl, { method: "POST", body: data, keepalive: true, headers: { "Content-Type": "text/plain" } });
+      } catch {}
+    },
+    true,
+  );
+
   var SLIDES = {
     hbs: ["overview", "advanced-disease", "longitudinal", "primary-mets", "pre-post-soc", "pre-post-io", "stats", "cta"],
     "ai-cohorts": ["overview", "imaging-clinical-data", "donor-profiles", "cohorts-available", "positioning", "repository", "core-partner", "scanning-capabilities", "stats", "advanced-disease", "longitudinal", "longitudinal-nsclc", "primary-mets", "pre-post-soc", "pre-post-io", "ffpe-tma-plasma", "cta"],

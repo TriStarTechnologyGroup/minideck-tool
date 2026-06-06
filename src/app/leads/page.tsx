@@ -11,6 +11,7 @@ type Row = {
   artifact_seconds: number;
   furthest_index: number;
   reached_cta: boolean;
+  cta_clicks: Record<string, number> | null;
   updated_at: string;
   link: {
     token: string;
@@ -35,7 +36,7 @@ export default async function LeadsPage() {
   const { data } = await supabase
     .from("link_engagement")
     .select(
-      "deck_seconds, artifact_seconds, furthest_index, reached_cta, updated_at, link:links(token, deck:decks(id, name, slug), contact:contacts(first_name, last_name, company, email, hubspot_url))",
+      "deck_seconds, artifact_seconds, furthest_index, reached_cta, cta_clicks, updated_at, link:links(token, deck:decks(id, name, slug), contact:contacts(first_name, last_name, company, email, hubspot_url))",
     )
     .order("updated_at", { ascending: false })
     .limit(200);
@@ -52,6 +53,8 @@ export default async function LeadsPage() {
     s += depthPct;
     if (r.reached_cta) s += 0.6;
     if (r.artifact_seconds > 0) s += 0.8;
+    if (r.cta_clicks?.cta_inquire) s += 1.2; // inquired
+    if (r.cta_clicks?.cta_book_meeting) s += 2.0; // booked a meeting — top of the list
     return (s + 0.2) * (0.4 + 0.6 * recency); // recency multiplier
   }
   const ranked = rows
@@ -62,6 +65,7 @@ export default async function LeadsPage() {
   function signal(r: Row): { label: string; cls: string } {
     const total = r.link?.deck ? slideCount(r.link.deck.slug) : 0;
     const depthPct = total ? r.furthest_index / total : 0;
+    if (r.cta_clicks?.cta_book_meeting || r.cta_clicks?.cta_inquire) return { label: "Hot", cls: "bg-primary text-white" };
     const hot = r.artifact_seconds > 0 || (r.reached_cta && r.deck_seconds >= 60) || r.deck_seconds >= 120;
     const warm = r.deck_seconds >= 30 || depthPct >= 0.5;
     if (hot) return { label: "Hot", cls: "bg-primary text-white" };
@@ -96,6 +100,7 @@ export default async function LeadsPage() {
                 <th className="px-4 py-2.5 font-medium">Engaged</th>
                 <th className="px-4 py-2.5 font-medium">Depth</th>
                 <th className="px-4 py-2.5 font-medium">Artifact</th>
+                <th className="px-4 py-2.5 font-medium">CTA</th>
                 <th className="px-4 py-2.5 font-medium">Last activity</th>
               </tr>
             </thead>
@@ -127,6 +132,15 @@ export default async function LeadsPage() {
                       {total ? `${r.furthest_index}/${total}` : r.furthest_index}
                     </td>
                     <td className="px-4 py-2.5 text-ink">{r.artifact_seconds > 0 ? "Yes" : "No"}</td>
+                    <td className="px-4 py-2.5">
+                      {r.cta_clicks?.cta_book_meeting ? (
+                        <span className="chip bg-primary text-white">📅 Meeting</span>
+                      ) : r.cta_clicks?.cta_inquire ? (
+                        <span className="chip bg-surface-blue-soft text-link">Inquire</span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-xs text-ink-muted">
                       {d === 0 ? "today" : `${d}d ago`}
                     </td>

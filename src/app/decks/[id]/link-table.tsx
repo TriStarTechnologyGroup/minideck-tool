@@ -30,6 +30,7 @@ type Stats = {
   timeSeconds: number;
   artifactSeconds: number;
   perSlideSeconds: Record<string, number>;
+  ctaClicks: Record<string, number>;
 };
 
 type Cell = { state: "loading" | "ok" | "error"; stats?: Stats };
@@ -39,6 +40,12 @@ function fmtDuration(s: number): string {
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return m ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+function ctaLabel(c: Record<string, number>): React.ReactNode {
+  if (c.cta_book_meeting) return <span className="chip bg-primary text-white">📅 Meeting</span>;
+  if (c.cta_inquire) return <span className="chip bg-surface-blue-soft text-link">Inquire</span>;
+  return "—";
 }
 
 function Skel({ w = "w-8" }: { w?: string }) {
@@ -130,6 +137,7 @@ export default function LinkTable({
                   <th className="px-3 py-2.5 font-medium">Time</th>
                   <th className="whitespace-nowrap px-3 py-2.5 font-medium">Slide depth</th>
                   <th className="px-3 py-2.5 font-medium">Artifact</th>
+                  <th className="px-3 py-2.5 font-medium">CTA</th>
                   <th className="px-3 py-2.5 font-medium">Created</th>
                 </tr>
               </thead>
@@ -165,6 +173,7 @@ export default function LinkTable({
                       <td className="whitespace-nowrap px-3 py-2.5 text-ink">{val(cell, (s) => fmtDuration(s.timeSeconds))}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-ink">{val(cell, depth)}</td>
                       <td className="px-3 py-2.5 text-ink">{val(cell, (s) => (s.artifactViews > 0 ? "Yes" : "No"))}</td>
+                      <td className="px-3 py-2.5">{val(cell, (s) => ctaLabel(s.ctaClicks))}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">
                         {new Date(r.created_at).toLocaleDateString()}
                       </td>
@@ -210,6 +219,7 @@ export default function LinkTable({
                     <Stat label="Time" v={val(cell, (s) => fmtDuration(s.timeSeconds))} />
                     <Stat label="Depth" v={val(cell, depth)} />
                     <Stat label="Artifact" v={val(cell, (s) => (s.artifactViews > 0 ? "Yes" : "No"))} />
+                    <Stat label="CTA" v={val(cell, (s) => ctaLabel(s.ctaClicks))} />
                     <Stat label="Last seen" v={val(cell, (s) => s.lastSeen ?? "—", "w-16")} />
                   </dl>
                 </div>
