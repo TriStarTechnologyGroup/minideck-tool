@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import CopyButton from "./copy-button";
+import CopyButton from "@/components/copy-button";
+import { useToast } from "@/components/toast";
 
 const EMPTY = { first_name: "", last_name: "", position: "", company: "", email: "" };
 
@@ -17,6 +18,7 @@ type HsResult = {
 
 export default function NewLinkForm({ deckId }: { deckId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const [form, setForm] = useState(EMPTY);
 
   const [query, setQuery] = useState("");
@@ -107,6 +109,7 @@ export default function NewLinkForm({ deckId }: { deckId: string }) {
     }
 
     setResult({ url, copied, reused: Boolean(json.reused), hubspotWarning: json.hubspotWarning ?? null });
+    toast(copied ? (json.reused ? "Existing link copied" : "Link created & copied") : "Link ready");
     setForm(EMPTY);
     setQuery("");
     setLinkedId(null);

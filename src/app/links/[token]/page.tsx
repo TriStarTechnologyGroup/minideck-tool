@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMergedStats } from "@/lib/link-stats";
 import { SLIDE_SLUGS, slideCount, slideLabel } from "@/lib/slides";
-import CopyButton from "./copy-button";
+import CopyButton from "@/components/copy-button";
 
 export const dynamic = "force-dynamic";
 

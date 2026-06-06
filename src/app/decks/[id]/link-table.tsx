@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import CopyButton from "./copy-button";
+import CopyButton from "@/components/copy-button";
 import HubspotRetry from "./hubspot-retry";
 
 export type LinkRow = {

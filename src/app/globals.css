@@ -125,3 +125,9 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 0.6875rem; font-weight: 500; line-height: 1.4;
   }
 }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-in { animation: toast-in 160ms ease-out; }

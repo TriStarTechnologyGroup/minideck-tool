@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/toast";
 
 export default function HubspotRetry({ contactId }: { contactId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -20,8 +22,10 @@ export default function HubspotRetry({ contactId }: { contactId: string }) {
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       setErr(j.error || "Sync failed");
+      toast("HubSpot sync failed");
       return;
     }
+    toast("Synced to HubSpot");
     router.refresh();
   }
 

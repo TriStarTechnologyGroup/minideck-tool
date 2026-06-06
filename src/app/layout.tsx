@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AppHeader from "@/components/app-header";
+import { ToastProvider } from "@/components/toast";
 
 export const metadata: Metadata = {
   title: "Minideck Tool — TriStar",
@@ -11,8 +12,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className="h-full">
       <body className="flex min-h-full flex-col">
-        <AppHeader />
-        {children}
+        <ToastProvider>
+          <AppHeader />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

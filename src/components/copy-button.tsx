@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useToast } from "@/components/toast";
 
-export default function CopyButton({ value, label = "Copy" }: { value: string; label?: string; className?: string }) {
+export default function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -23,6 +25,7 @@ export default function CopyButton({ value, label = "Copy" }: { value: string; l
       document.body.removeChild(ta);
     }
     setCopied(true);
+    toast("Link copied to clipboard");
     setTimeout(() => setCopied(false), 1500);
   }
 
