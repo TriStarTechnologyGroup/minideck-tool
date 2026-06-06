@@ -5,6 +5,8 @@
 export const publicEnv = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+  // Flip to "true" once the Google provider is enabled in Supabase to show the SSO button.
+  googleSso: process.env.NEXT_PUBLIC_GOOGLE_SSO === "true",
 } as const;
 
 /** True when the public Supabase config needed to talk to Auth/DB from the client exists. */
