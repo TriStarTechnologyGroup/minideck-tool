@@ -8,6 +8,7 @@ import { isPlausibleConfigured } from "@/lib/plausible";
 import { slideCount } from "@/lib/slides";
 import NewLinkForm from "./new-link-form";
 import LinkTable, { type LinkRow } from "./link-table";
+import DeckHeatmap from "./deck-heatmap";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,16 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
           slideTotal={slideCount(deck.slug)}
         />
       </section>
+
+      <details className="group">
+        <summary className="cursor-pointer font-display text-lg font-medium text-ink">
+          Audience engagement{" "}
+          <span className="font-sans text-sm font-normal text-ink-muted">(all prospects · slide heatmap)</span>
+        </summary>
+        <div className="mt-3">
+          <DeckHeatmap deckId={deck.id} deckSlug={deck.slug} />
+        </div>
+      </details>
     </main>
   );
 }

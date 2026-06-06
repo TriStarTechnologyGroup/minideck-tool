@@ -23,6 +23,9 @@ export default async function AppHeader() {
             <Link href="/decks" className="font-medium text-white/90 transition-colors hover:text-primary">
               Decks
             </Link>
+            <Link href="/leads" className="font-medium text-white/90 transition-colors hover:text-primary">
+              Leads
+            </Link>
             {isAdmin && (
               <Link href="/admin/users" className="font-medium text-white/90 transition-colors hover:text-primary">
                 Users

@@ -109,6 +109,37 @@ export function buildContactUrl(portalId: string, contactId: string): string {
   return `https://app.hubspot.com/contacts/${portalId}/contact/${contactId}`;
 }
 
+/** Create a high-priority Task associated to the contact (task→contact assoc = 204). */
+export async function createEngagementTask(contactId: string, subject: string, body: string): Promise<void> {
+  const res = await fetch(`${BASE}/crm/v3/objects/tasks`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      properties: {
+        hs_task_subject: subject,
+        hs_task_body: body,
+        hs_timestamp: new Date().toISOString(),
+        hs_task_status: "NOT_STARTED",
+        hs_task_priority: "HIGH",
+      },
+      associations: [
+        { to: { id: contactId }, types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 204 }] },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`HubSpot task failed: ${res.status} ${(await res.text()).slice(0, 160)}`);
+}
+
+/** Patch Minideck engagement properties on the contact (see scripts/setup-hubspot-properties.mjs). */
+export async function updateContactProperties(contactId: string, properties: Record<string, string>): Promise<void> {
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts/${contactId}`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({ properties }),
+  });
+  if (!res.ok) throw new Error(`HubSpot props failed: ${res.status} ${(await res.text()).slice(0, 160)}`);
+}
+
 export interface HubspotContactResult {
   id: string;
   firstname: string;
