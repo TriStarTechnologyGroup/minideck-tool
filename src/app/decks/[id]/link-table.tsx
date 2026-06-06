@@ -45,15 +45,16 @@ export default function LinkTable({
   rows,
   hubspotOn,
   plausibleOn,
+  slideTotal,
 }: {
   rows: LinkRow[];
   hubspotOn: boolean;
   plausibleOn: boolean;
+  slideTotal: number;
 }) {
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const loadStats = useCallback(async () => {
     if (!plausibleOn || rows.length === 0) return;
@@ -79,15 +80,6 @@ export default function LinkTable({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats();
   }, [loadStats]);
-
-  function toggle(token: string) {
-    setExpanded((s) => {
-      const n = new Set(s);
-      if (n.has(token)) n.delete(token);
-      else n.add(token);
-      return n;
-    });
-  }
 
   return (
     <div>
@@ -159,37 +151,8 @@ export default function LinkTable({
                     <td className="px-3 py-2.5 text-ink">{stat(s ? s.views : null)}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">{stat(s?.lastSeen ?? "—")}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-ink">{stat(s ? fmtDuration(s.timeSeconds) : null)}</td>
-                    <td className="px-3 py-2.5">
-                      {stat(
-                        s ? (
-                          <button
-                            type="button"
-                            onClick={() => toggle(r.token)}
-                            className="font-medium text-link underline-offset-2 hover:underline"
-                            title="Per-slide detail"
-                          >
-                            {s.furthestSlide || 0}
-                            {expanded.has(r.token) ? " ▾" : " ▸"}
-                          </button>
-                        ) : null,
-                      )}
-                      {expanded.has(r.token) && s && (
-                        <div className="mt-1.5 space-y-0.5">
-                          {s.slides.length === 0 ? (
-                            <span className="text-xs text-ink-muted/70">no slide views</span>
-                          ) : (
-                            s.slides.map((sl) => (
-                              <div key={sl.slide} className="flex justify-between gap-3 text-xs text-ink-muted">
-                                <span>{sl.slide}</span>
-                                <span>
-                                  {sl.views} view{sl.views === 1 ? "" : "s"}
-                                  {s.perSlideSeconds[sl.slide] ? ` · ${fmtDuration(s.perSlideSeconds[sl.slide])}` : ""}
-                                </span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
+                    <td className="whitespace-nowrap px-3 py-2.5 text-ink">
+                      {stat(s ? (slideTotal ? `${s.furthestSlide} / ${slideTotal}` : String(s.furthestSlide)) : null)}
                     </td>
                     <td className="px-3 py-2.5 text-ink">{stat(s ? (s.artifactViews > 0 ? "Yes" : "No") : null)}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">
@@ -205,7 +168,7 @@ export default function LinkTable({
 
       <p className="mt-2 text-xs text-ink-muted/70">
         {plausibleOn
-          ? "Counts (views, depth, opened, artifact) from Plausible; “Time” is engaged time-on-deck (visible-only) from our collector. Click a contact for the full prospect view."
+          ? "Counts (views, depth, opened, artifact) from Plausible; “Time” is engaged time-on-deck (visible-only) from our collector. Click a contact for the per-slide breakdown and follow-up insights."
           : "Plausible isn’t configured — counts are hidden; “Time” still works via the engagement collector."}
       </p>
     </div>

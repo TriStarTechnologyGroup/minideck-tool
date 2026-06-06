@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Deck } from "@/lib/decks";
 import { isHubspotConfigured } from "@/lib/hubspot";
 import { isPlausibleConfigured } from "@/lib/plausible";
+import { slideCount } from "@/lib/slides";
 import NewLinkForm from "./new-link-form";
 import LinkTable, { type LinkRow } from "./link-table";
 
@@ -101,7 +102,12 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
       <NewLinkForm deckId={deck.id} />
 
       <section>
-        <LinkTable rows={rows} hubspotOn={isHubspotConfigured()} plausibleOn={isPlausibleConfigured()} />
+        <LinkTable
+          rows={rows}
+          hubspotOn={isHubspotConfigured()}
+          plausibleOn={isPlausibleConfigured()}
+          slideTotal={slideCount(deck.slug)}
+        />
       </section>
     </main>
   );
