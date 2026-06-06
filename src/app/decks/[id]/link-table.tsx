@@ -76,7 +76,6 @@ export default function LinkTable({
   }, [rows, plausibleOn]);
 
   useEffect(() => {
-    // Fetch stats once the rows are known (and on refresh callback identity change).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats();
   }, [loadStats]);
@@ -92,19 +91,14 @@ export default function LinkTable({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">
-          Links <span className="font-normal text-neutral-500">({rows.length})</span>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-display text-lg font-medium text-ink">
+          Links <span className="font-sans text-base font-normal text-ink-muted">({rows.length})</span>
         </h2>
         {plausibleOn && rows.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
+          <div className="flex items-center gap-2 text-xs text-ink-muted">
             {refreshedAt && <span>updated {refreshedAt}</span>}
-            <button
-              type="button"
-              onClick={loadStats}
-              disabled={loading}
-              className="rounded-md border border-neutral-300 px-2 py-1 font-medium transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
+            <button type="button" onClick={loadStats} disabled={loading} className="btn btn-ghost btn-xs">
               {loading ? "Refreshing…" : "Refresh stats"}
             </button>
           </div>
@@ -112,71 +106,67 @@ export default function LinkTable({
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-neutral-300 px-6 py-8 text-center text-sm text-neutral-500 dark:border-neutral-700">
+        <p className="card px-6 py-10 text-center text-sm text-ink-muted">
           No links yet. Use the form above to create one.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+        <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500 dark:border-neutral-800">
+            <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
               <tr>
-                <th className="px-3 py-2 font-medium">Contact</th>
-                <th className="px-3 py-2 font-medium">Company</th>
-                <th className="px-3 py-2 font-medium">Link</th>
-                <th className="px-3 py-2 font-medium">Opened</th>
-                <th className="px-3 py-2 font-medium">Views</th>
-                <th className="px-3 py-2 font-medium">Last seen</th>
-                <th className="px-3 py-2 font-medium">Time</th>
-                <th className="px-3 py-2 font-medium">Slide depth</th>
-                <th className="px-3 py-2 font-medium">Artifact</th>
-                <th className="px-3 py-2 font-medium">Created</th>
+                <th className="px-3 py-2.5 font-medium">Contact</th>
+                <th className="px-3 py-2.5 font-medium">Company</th>
+                <th className="px-3 py-2.5 font-medium">Link</th>
+                <th className="px-3 py-2.5 font-medium">Opened</th>
+                <th className="px-3 py-2.5 font-medium">Views</th>
+                <th className="px-3 py-2.5 font-medium">Last seen</th>
+                <th className="px-3 py-2.5 font-medium">Time</th>
+                <th className="px-3 py-2.5 font-medium">Slide depth</th>
+                <th className="px-3 py-2.5 font-medium">Artifact</th>
+                <th className="px-3 py-2.5 font-medium">Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            <tbody className="divide-y divide-line">
               {rows.map((r) => {
                 const cell = cells[r.token];
                 const s = cell?.state === "ok" ? cell.stats : undefined;
                 const stat = (v: React.ReactNode) =>
                   !plausibleOn ? "—" : cell?.state === "loading" ? "…" : cell?.state === "error" ? "—" : v;
                 return (
-                  <tr key={r.id} className="align-top">
-                    <td className="px-3 py-2">
-                      <Link href={`/links/${r.token}`} className="font-medium hover:underline">
+                  <tr key={r.id} className="align-top transition-colors hover:bg-surface-subtle">
+                    <td className="px-3 py-2.5">
+                      <Link href={`/links/${r.token}`} className="font-medium text-ink hover:text-link">
                         {r.contact?.name ?? "—"} →
                       </Link>
-                      <div className="flex items-center gap-2 text-xs text-neutral-500">
+                      <div className="flex items-center gap-2 text-xs text-ink-muted">
                         <span>{r.contact?.email}</span>
                         {r.contact?.hubspot_url && (
-                          <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                          <a href={r.contact.hubspot_url} target="_blank" rel="noopener noreferrer" className="text-link hover:underline">
                             HubSpot ↗
                           </a>
                         )}
-                        {hubspotOn && r.contact && !r.contact.hubspot_id && (
-                          <HubspotRetry contactId={r.contact.id} />
-                        )}
+                        {hubspotOn && r.contact && !r.contact.hubspot_id && <HubspotRetry contactId={r.contact.id} />}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-neutral-600 dark:text-neutral-300">{r.contact?.company ?? "—"}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2.5 text-ink-muted">{r.contact?.company ?? "—"}</td>
+                    <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
-                        <code className="max-w-[14rem] truncate text-xs text-neutral-600 dark:text-neutral-300">
-                          {r.full_url}
-                        </code>
+                        <code className="max-w-[13rem] truncate text-xs text-ink-muted">{r.full_url}</code>
                         <CopyButton value={r.full_url} />
                       </div>
                     </td>
-                    <td className="px-3 py-2">{stat(s?.opened ? "Yes" : "No")}</td>
-                    <td className="px-3 py-2">{stat(s ? s.views : null)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs">{stat(s?.lastSeen ?? "—")}</td>
-                    <td className="whitespace-nowrap px-3 py-2">{stat(s ? fmtDuration(s.timeSeconds) : null)}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2.5 text-ink">{stat(s?.opened ? "Yes" : "No")}</td>
+                    <td className="px-3 py-2.5 text-ink">{stat(s ? s.views : null)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">{stat(s?.lastSeen ?? "—")}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-ink">{stat(s ? fmtDuration(s.timeSeconds) : null)}</td>
+                    <td className="px-3 py-2.5">
                       {stat(
                         s ? (
                           <button
                             type="button"
                             onClick={() => toggle(r.token)}
-                            className="underline underline-offset-2 hover:no-underline"
-                            title="Per-slide views"
+                            className="font-medium text-link underline-offset-2 hover:underline"
+                            title="Per-slide detail"
                           >
                             {s.furthestSlide || 0}
                             {expanded.has(r.token) ? " ▾" : " ▸"}
@@ -184,12 +174,12 @@ export default function LinkTable({
                         ) : null,
                       )}
                       {expanded.has(r.token) && s && (
-                        <div className="mt-1 space-y-0.5">
+                        <div className="mt-1.5 space-y-0.5">
                           {s.slides.length === 0 ? (
-                            <span className="text-xs text-neutral-400">no slide views</span>
+                            <span className="text-xs text-ink-muted/70">no slide views</span>
                           ) : (
                             s.slides.map((sl) => (
-                              <div key={sl.slide} className="flex justify-between gap-3 text-xs text-neutral-500">
+                              <div key={sl.slide} className="flex justify-between gap-3 text-xs text-ink-muted">
                                 <span>{sl.slide}</span>
                                 <span>
                                   {sl.views} view{sl.views === 1 ? "" : "s"}
@@ -201,8 +191,8 @@ export default function LinkTable({
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2">{stat(s ? (s.artifactViews > 0 ? "Yes" : "No") : null)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-neutral-500">
+                    <td className="px-3 py-2.5 text-ink">{stat(s ? (s.artifactViews > 0 ? "Yes" : "No") : null)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">
                       {new Date(r.created_at).toLocaleDateString()}
                     </td>
                   </tr>
@@ -213,9 +203,9 @@ export default function LinkTable({
         </div>
       )}
 
-      <p className="mt-2 text-xs text-neutral-400">
+      <p className="mt-2 text-xs text-ink-muted/70">
         {plausibleOn
-          ? "“Views/Slide depth/Artifact” are page-load counts from Plausible (cached ~60s). “Time” is engaged time-on-deck from our own collector (counts only while the tab is visible, so a left-open background tab doesn’t inflate it). Expand “Slide depth” for per-slide views + seconds."
+          ? "Counts (views, depth, opened, artifact) from Plausible; “Time” is engaged time-on-deck (visible-only) from our collector. Click a contact for the full prospect view."
           : "Plausible isn’t configured — counts are hidden; “Time” still works via the engagement collector."}
       </p>
     </div>

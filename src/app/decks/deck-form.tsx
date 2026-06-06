@@ -39,12 +39,6 @@ export default function DeckForm({ deck }: Props) {
       setBusy(null);
       return;
     }
-    if (!editing && json.screenshot === "failed") {
-      // Created, but thumbnail couldn't be captured — let them know they can re-capture.
-      router.push("/decks");
-      router.refresh();
-      return;
-    }
     router.push("/decks");
     router.refresh();
   }
@@ -85,7 +79,7 @@ export default function DeckForm({ deck }: Props) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
+    <form onSubmit={onSubmit} className="card space-y-5 p-6">
       <Field label="Name" value={name} onChange={setName} placeholder="HBS" required />
       <Field
         label="Base URL"
@@ -114,48 +108,26 @@ export default function DeckForm({ deck }: Props) {
       />
 
       {editing && (
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="accent-[var(--color-primary)]" />
           Archived
         </label>
       )}
 
-      {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/40 dark:text-green-300">
-          {notice}
-        </p>
-      )}
+      {error && <p className="rounded-sm bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>}
+      {notice && <p className="rounded-sm bg-surface-blue px-3 py-2 text-sm text-link">{notice}</p>}
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={busy !== null}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:opacity-50 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-        >
+        <button type="submit" disabled={busy !== null} className="btn btn-primary">
           {busy === "save" ? "Saving…" : editing ? "Save changes" : "Create deck"}
         </button>
 
         {editing && (
           <>
-            <button
-              type="button"
-              onClick={recapture}
-              disabled={busy !== null}
-              className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
+            <button type="button" onClick={recapture} disabled={busy !== null} className="btn btn-ghost">
               {busy === "recapture" ? "Capturing…" : "Re-capture thumbnail"}
             </button>
-            <button
-              type="button"
-              onClick={remove}
-              disabled={busy !== null}
-              className="ml-auto rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
-            >
+            <button type="button" onClick={remove} disabled={busy !== null} className="btn btn-danger ml-auto">
               {busy === "delete" ? "Deleting…" : "Delete"}
             </button>
           </>
@@ -183,17 +155,17 @@ function Field({
   hint?: string;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium">{label}</label>
+    <div className="space-y-1.5">
+      <label className="field-label">{label}</label>
       <input
         type={type}
         required={required}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:focus:border-neutral-300"
+        className="input"
       />
-      {hint && <p className="text-xs text-neutral-500">{hint}</p>}
+      {hint && <p className="text-xs text-ink-muted">{hint}</p>}
     </div>
   );
 }

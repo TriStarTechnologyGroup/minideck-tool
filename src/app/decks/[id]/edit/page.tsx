@@ -16,12 +16,12 @@ export default async function EditDeckPage({ params }: { params: Promise<{ id: s
   if (!deck) notFound();
 
   return (
-    <main className="mx-auto flex max-w-lg flex-1 flex-col gap-6 px-6 py-12">
-      <div className="space-y-1">
-        <Link href="/decks" className="text-sm text-neutral-500 hover:underline">
-          ← Decks
+    <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 px-6 py-10">
+      <div>
+        <Link href={`/decks/${id}`} className="text-sm text-link hover:underline">
+          ← {(deck as Deck).name}
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Edit deck</h1>
+        <h1 className="mt-2 text-2xl">Edit deck</h1>
       </div>
       <DeckForm deck={deck as Deck} />
     </main>

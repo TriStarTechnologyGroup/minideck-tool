@@ -27,7 +27,8 @@ type DbRow = {
 };
 
 export default async function DeckDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const profile = await requireUser();
+  const isAdmin = profile.role === "admin";
   const { id } = await params;
   const supabase = await createClient();
 
@@ -62,26 +63,38 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
   }));
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-6 py-12">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
       <div>
-        <Link href="/decks" className="text-sm text-neutral-500 hover:underline">
+        <Link href="/decks" className="text-sm text-link hover:underline">
           ← Decks
         </Link>
-        <div className="mt-2 flex items-center gap-4">
-          {deck.thumbnail_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={deck.thumbnail_url}
-              alt=""
-              className="h-12 w-20 rounded border border-neutral-200 object-cover dark:border-neutral-800"
-            />
-          )}
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{deck.name}</h1>
-            <a href={deck.base_url} target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-500 hover:underline">
-              {deck.base_url}
-            </a>
+        <div className="mt-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            {deck.thumbnail_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={deck.thumbnail_url}
+                alt=""
+                className="h-14 w-24 rounded-sm border border-line object-cover"
+              />
+            )}
+            <div>
+              <h1 className="text-2xl">{deck.name}</h1>
+              <a
+                href={deck.base_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-link hover:underline"
+              >
+                {deck.base_url}
+              </a>
+            </div>
           </div>
+          {isAdmin && (
+            <Link href={`/decks/${deck.id}/edit`} className="btn btn-ghost btn-xs">
+              Edit deck
+            </Link>
+          )}
         </div>
       </div>
 

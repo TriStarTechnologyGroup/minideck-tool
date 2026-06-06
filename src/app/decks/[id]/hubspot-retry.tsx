@@ -27,14 +27,14 @@ export default function HubspotRetry({ contactId }: { contactId: string }) {
 
   return (
     <span className="inline-flex items-center gap-1 text-xs">
-      <span className="text-amber-600 dark:text-amber-400" title={err ?? undefined}>
+      <span className="text-danger" title={err ?? undefined}>
         not synced
       </span>
       <button
         type="button"
         onClick={retry}
         disabled={busy}
-        className="underline underline-offset-2 hover:no-underline disabled:opacity-50"
+        className="text-link underline underline-offset-2 hover:no-underline disabled:opacity-50"
       >
         {busy ? "syncing…" : "Retry"}
       </button>
