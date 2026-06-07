@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { buildLinkUrl, newToken } from "./token";
 
 describe("buildLinkUrl", () => {
-  it("appends ?t= to a base URL", () => {
-    expect(buildLinkUrl("https://hbs.tristargroup.us", "Ab3xK9")).toBe("https://hbs.tristargroup.us/?t=Ab3xK9");
+  it("appends ?lead= to a base URL", () => {
+    expect(buildLinkUrl("https://hbs.tristargroup.us", "Ab3xK9")).toBe("https://hbs.tristargroup.us/?lead=Ab3xK9");
   });
   it("strips trailing slashes before appending", () => {
-    expect(buildLinkUrl("https://hbs.tristargroup.us/", "Ab3xK9")).toBe("https://hbs.tristargroup.us/?t=Ab3xK9");
-    expect(buildLinkUrl("https://hbs.tristargroup.us///", "Ab3xK9")).toBe("https://hbs.tristargroup.us/?t=Ab3xK9");
+    expect(buildLinkUrl("https://hbs.tristargroup.us/", "Ab3xK9")).toBe("https://hbs.tristargroup.us/?lead=Ab3xK9");
+    expect(buildLinkUrl("https://hbs.tristargroup.us///", "Ab3xK9")).toBe("https://hbs.tristargroup.us/?lead=Ab3xK9");
   });
 });
 
