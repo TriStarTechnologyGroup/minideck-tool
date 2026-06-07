@@ -108,6 +108,7 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
           hubspotOn={isHubspotConfigured()}
           plausibleOn={isPlausibleConfigured()}
           slideTotal={slideCount(deck.slug)}
+          isAdmin={isAdmin}
         />
       </section>
 
