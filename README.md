@@ -54,5 +54,14 @@ Contacts + links -> HubSpot -> wire track.js into the decks -> Plausible stats.
 
 ## Deploy (Vercel)
 
-Import the repo, set the env vars from `.env.example`, add the `decks.tristargroup.us`
-domain, and point DNS (CNAME -> Vercel). `APP_BASE_URL` should be the production URL.
+The GitHub repo is connected to the Vercel project, so deploys are **automatic**:
+
+- Push/merge to `main` → production deploy to `decks.tristargroup.us`.
+- Open a PR → Vercel preview deploy on the PR.
+
+No manual `vercel --prod` is needed for routine changes (it remains available as a
+fallback). Env vars are configured in Vercel Project Settings (mirror `.env.example`);
+`APP_BASE_URL` should be the production URL.
+
+DB migrations are **not** part of the Vercel build — apply them separately with
+`node --env-file=.env.local scripts/apply-migrations.mjs` (idempotent).
