@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import CopyButton from "@/components/copy-button";
 import HubspotRetry from "./hubspot-retry";
@@ -57,15 +58,41 @@ export default function LinkTable({
   hubspotOn,
   plausibleOn,
   slideTotal,
+  isAdmin = false,
 }: {
   rows: LinkRow[];
   hubspotOn: boolean;
   plausibleOn: boolean;
   slideTotal: number;
+  isAdmin?: boolean;
 }) {
+  const router = useRouter();
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const visibleRows = rows.filter((r) => !removed.has(r.token));
+
+  async function deleteLink(token: string, name: string) {
+    if (
+      !confirm(
+        `Delete the link for ${name || "this contact"}?\n\nThis removes the link and its engagement data. The contact record and any analytics already in Plausible are unaffected.`,
+      )
+    )
+      return;
+    setDeleting(token);
+    const res = await fetch(`/api/links/${token}`, { method: "DELETE" });
+    setDeleting(null);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || "Delete failed");
+      return;
+    }
+    setRemoved((s) => new Set(s).add(token));
+    router.refresh();
+  }
 
   const loadStats = useCallback(async () => {
     if (!plausibleOn || rows.length === 0) return;
@@ -105,9 +132,9 @@ export default function LinkTable({
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-display text-lg font-medium text-ink">
-          Links <span className="font-sans text-base font-normal text-ink-muted">({rows.length})</span>
+          Links <span className="font-sans text-base font-normal text-ink-muted">({visibleRows.length})</span>
         </h2>
-        {plausibleOn && rows.length > 0 && (
+        {plausibleOn && visibleRows.length > 0 && (
           <div className="flex items-center gap-2 text-xs text-ink-muted">
             {refreshedAt && <span className="hidden sm:inline">updated {refreshedAt}</span>}
             <button type="button" onClick={loadStats} disabled={loading} className="btn btn-ghost btn-xs">
@@ -117,7 +144,7 @@ export default function LinkTable({
         )}
       </div>
 
-      {rows.length === 0 ? (
+      {visibleRows.length === 0 ? (
         <p className="card px-6 py-12 text-center text-sm text-ink-muted">
           No links yet. Use the form above to create one.
         </p>
@@ -139,10 +166,11 @@ export default function LinkTable({
                   <th className="px-3 py-2.5 font-medium">Artifact</th>
                   <th className="px-3 py-2.5 font-medium">CTA</th>
                   <th className="px-3 py-2.5 font-medium">Created</th>
+                  {isAdmin && <th className="px-3 py-2.5 font-medium sr-only">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {rows.map((r) => {
+                {visibleRows.map((r) => {
                   const cell = cells[r.token];
                   return (
                     <tr key={r.id} className="align-top transition-colors hover:bg-surface-subtle">
@@ -177,6 +205,19 @@ export default function LinkTable({
                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-muted">
                         {new Date(r.created_at).toLocaleDateString()}
                       </td>
+                      {isAdmin && (
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => deleteLink(r.token, r.contact?.name ?? "")}
+                            disabled={deleting === r.token}
+                            className="btn btn-danger btn-xs"
+                            aria-label={`Delete link for ${r.contact?.name ?? "contact"}`}
+                          >
+                            {deleting === r.token ? "Deleting…" : "Delete"}
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -186,7 +227,7 @@ export default function LinkTable({
 
           {/* Mobile / tablet: cards */}
           <div className="space-y-3 lg:hidden">
-            {rows.map((r) => {
+            {visibleRows.map((r) => {
               const cell = cells[r.token];
               return (
                 <div key={r.id} className="card p-4">
@@ -222,6 +263,20 @@ export default function LinkTable({
                     <Stat label="CTA" v={val(cell, (s) => ctaLabel(s.ctaClicks))} />
                     <Stat label="Last seen" v={val(cell, (s) => s.lastSeen ?? "—", "w-16")} />
                   </dl>
+
+                  {isAdmin && (
+                    <div className="mt-3 flex justify-end border-t border-line pt-3">
+                      <button
+                        type="button"
+                        onClick={() => deleteLink(r.token, r.contact?.name ?? "")}
+                        disabled={deleting === r.token}
+                        className="btn btn-danger btn-xs"
+                        aria-label={`Delete link for ${r.contact?.name ?? "contact"}`}
+                      >
+                        {deleting === r.token ? "Deleting…" : "Delete link"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
