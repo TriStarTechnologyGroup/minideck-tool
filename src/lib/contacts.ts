@@ -33,13 +33,24 @@ const email = z
   .toLowerCase()
   .refine((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Invalid email address");
 
-export const contactLinkInput = z.object({
-  deckId: z.string().min(1),
+// One contact row (no deck) — shared by the single form and bulk import.
+export const contactRowInput = z.object({
   first_name: z.string().trim().min(1, "First name is required"),
   last_name: z.string().trim().min(1, "Last name is required"),
   position: optText,
   company: optText,
   email,
 });
+export type ContactRowInput = z.infer<typeof contactRowInput>;
 
+export const contactLinkInput = contactRowInput.extend({
+  deckId: z.string().min(1),
+});
 export type ContactLinkInput = z.infer<typeof contactLinkInput>;
+
+// Bulk: a deck + up to 500 contact rows.
+export const bulkLinkInput = z.object({
+  deckId: z.string().min(1),
+  rows: z.array(contactRowInput).min(1).max(500),
+});
+export type BulkLinkInput = z.infer<typeof bulkLinkInput>;
