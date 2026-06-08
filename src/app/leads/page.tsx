@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { slideCount } from "@/lib/slides";
 
 export const dynamic = "force-dynamic";
@@ -30,8 +31,15 @@ function daysAgo(iso: string): number {
 }
 
 export default async function LeadsPage() {
-  await requireUser();
+  const profile = await requireUser();
   const supabase = await createClient();
+
+  // "New since you last looked": compare engagement updated_at to this user's
+  // leads_seen_at, then stamp it to now so the next visit re-baselines.
+  const { data: me } = await supabase.from("profiles").select("leads_seen_at").eq("id", profile.id).maybeSingle();
+  const prevSeen = (me as { leads_seen_at?: string | null } | null)?.leads_seen_at
+    ? new Date((me as { leads_seen_at: string }).leads_seen_at).getTime()
+    : 0;
 
   const { data } = await supabase
     .from("link_engagement")
@@ -62,6 +70,16 @@ export default async function LeadsPage() {
     .sort((a, b) => b.s - a.s)
     .map((x) => x.r);
 
+  // Engagements with activity since this user last viewed the page.
+  const newTokens = new Set(
+    ranked.filter((r) => new Date(r.updated_at).getTime() > prevSeen).map((r) => r.link!.token),
+  );
+  // Re-baseline "seen" for this user (profiles writes go through the service role).
+  await createAdminClient()
+    .from("profiles")
+    .update({ leads_seen_at: new Date().toISOString() })
+    .eq("id", profile.id);
+
   function signal(r: Row): { label: string; cls: string } {
     const total = r.link?.deck ? slideCount(r.link.deck.slug) : 0;
     const depthPct = total ? r.furthest_index / total : 0;
@@ -77,9 +95,15 @@ export default async function LeadsPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <header>
         <p className="eyebrow">Sales intelligence</p>
-        <h1 className="mt-1 text-3xl">Hot leads</h1>
+        <div className="mt-1 flex items-center gap-3">
+          <h1 className="text-3xl">Hot leads</h1>
+          {newTokens.size > 0 && (
+            <span className="chip bg-primary text-white">{newTokens.size} new</span>
+          )}
+        </div>
         <p className="mt-1 text-sm text-ink-muted">
           Every engaged prospect across all decks, ranked by intent × depth × recency. Start your day here.
+          {newTokens.size > 0 && " “New” marks activity since your last visit."}
         </p>
       </header>
 
@@ -113,9 +137,14 @@ export default async function LeadsPage() {
                   <tr key={r.link!.token} className="align-middle transition-colors hover:bg-surface-subtle">
                     <td className="px-4 py-2.5 text-ink-muted">{i + 1}</td>
                     <td className="px-4 py-2.5">
-                      <Link href={`/links/${r.link!.token}`} className="font-medium text-ink hover:text-link">
-                        {`${r.link!.contact!.first_name} ${r.link!.contact!.last_name}`.trim()} →
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/links/${r.link!.token}`} className="font-medium text-ink hover:text-link">
+                          {`${r.link!.contact!.first_name} ${r.link!.contact!.last_name}`.trim()} →
+                        </Link>
+                        {newTokens.has(r.link!.token) && (
+                          <span className="chip bg-primary text-white text-[0.6rem]">New</span>
+                        )}
+                      </div>
                       <div className="text-xs text-ink-muted">{r.link!.contact!.email}</div>
                     </td>
                     <td className="px-4 py-2.5 text-ink-muted">{r.link!.contact!.company ?? "—"}</td>

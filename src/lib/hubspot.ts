@@ -110,24 +110,51 @@ export function buildContactUrl(portalId: string, contactId: string): string {
 }
 
 /** Create a high-priority Task associated to the contact (task→contact assoc = 204). */
-export async function createEngagementTask(contactId: string, subject: string, body: string): Promise<void> {
+export async function createEngagementTask(
+  contactId: string,
+  subject: string,
+  body: string,
+  ownerId?: string | null,
+): Promise<void> {
+  const properties: Record<string, string> = {
+    hs_task_subject: subject,
+    hs_task_body: body,
+    hs_timestamp: new Date().toISOString(),
+    hs_task_status: "NOT_STARTED",
+    hs_task_priority: "HIGH",
+  };
+  // Assign to a rep so the task lands in their queue / notifies them.
+  if (ownerId) properties.hubspot_owner_id = ownerId;
+
   const res = await fetch(`${BASE}/crm/v3/objects/tasks`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
-      properties: {
-        hs_task_subject: subject,
-        hs_task_body: body,
-        hs_timestamp: new Date().toISOString(),
-        hs_task_status: "NOT_STARTED",
-        hs_task_priority: "HIGH",
-      },
+      properties,
       associations: [
         { to: { id: contactId }, types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 204 }] },
       ],
     }),
   });
   if (!res.ok) throw new Error(`HubSpot task failed: ${res.status} ${(await res.text()).slice(0, 160)}`);
+}
+
+// Resolve a HubSpot owner id from an email (the link creator's app-login email).
+// Cached per process — owner lists change rarely. Returns null if no match.
+const ownerCache = new Map<string, string | null>();
+export async function getOwnerIdByEmail(email: string): Promise<string | null> {
+  const key = email.trim().toLowerCase();
+  if (!key) return null;
+  if (ownerCache.has(key)) return ownerCache.get(key) ?? null;
+  let id: string | null = null;
+  try {
+    const res = await fetch(`${BASE}/crm/v3/owners?email=${encodeURIComponent(key)}&limit=1`, { headers: headers() });
+    if (res.ok) id = (await res.json()).results?.[0]?.id ?? null;
+  } catch {
+    id = null;
+  }
+  ownerCache.set(key, id);
+  return id;
 }
 
 /** Patch Minideck engagement properties on the contact (see scripts/setup-hubspot-properties.mjs). */

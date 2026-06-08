@@ -6,6 +6,7 @@ import {
   isHubspotConfigured,
   createEngagementTask,
   updateContactProperties,
+  getOwnerIdByEmail,
 } from "@/lib/hubspot";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   const { data: link } = await admin
     .from("links")
     .select(
-      "token, deck:decks(slug, name), contact:contacts(id, first_name, last_name, hubspot_id)",
+      "token, created_by, deck:decks(slug, name), contact:contacts(id, first_name, last_name, hubspot_id)",
     )
     .eq("token", token)
     .maybeSingle();
@@ -49,6 +50,22 @@ export async function POST(req: NextRequest) {
   const contact = link.contact as unknown as
     | { id: string; first_name: string; last_name: string; hubspot_id: string | null }
     | null;
+  const createdBy = (link as unknown as { created_by: string | null }).created_by;
+
+  // Resolve the task owner once (lazily): the link creator's HubSpot owner, matched
+  // by their app-login email; falls back to HUBSPOT_DEFAULT_OWNER_ID, else unassigned.
+  let _ownerResolved = false;
+  let _ownerId: string | null = null;
+  async function ownerFor(): Promise<string | null> {
+    if (_ownerResolved) return _ownerId;
+    _ownerResolved = true;
+    if (createdBy) {
+      const { data: prof } = await admin.from("profiles").select("email").eq("id", createdBy).maybeSingle();
+      if (prof?.email) _ownerId = await getOwnerIdByEmail(prof.email);
+    }
+    if (!_ownerId && serverEnv.HUBSPOT_DEFAULT_OWNER_ID) _ownerId = serverEnv.HUBSPOT_DEFAULT_OWNER_ID;
+    return _ownerId;
+  }
 
   // ── CTA-click beacon (book-a-meeting / inquire / etc.) — strongest intent signal ──
   if (body.kind === "cta") {
@@ -75,6 +92,7 @@ export async function POST(req: NextRequest) {
           contact.hubspot_id,
           `🔥 ${name} ${label} — ${deck.name}`,
           `${name} ${label} on ${deck.name}. This is a top-priority follow-up.\n${APP}/links/${token}`,
+          await ownerFor(),
         );
         await updateContactProperties(contact.hubspot_id, {
           minideck_last_cta: event,
@@ -150,7 +168,7 @@ export async function POST(req: NextRequest) {
       `${artifactOpened ? " · opened data page" : ""}.\n` +
       `Full view: ${APP}/links/${token}`;
     try {
-      await createEngagementTask(contact.hubspot_id, subject, bodyText);
+      await createEngagementTask(contact.hubspot_id, subject, bodyText, await ownerFor());
       await updateContactProperties(contact.hubspot_id, {
         minideck_last_deck: deck.name,
         minideck_last_viewed: String(Date.now()),
