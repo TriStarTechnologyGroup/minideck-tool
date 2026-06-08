@@ -3,12 +3,18 @@
 export const SLIDE_SLUGS: Record<string, string[]> = {
   hbs: [
     "overview",
+    "imaging-clinical-data",
+    "donor-profiles",
+    "cohorts-available",
+    "core-partner",
+    "stats",
     "advanced-disease",
     "longitudinal",
+    "longitudinal-nsclc",
     "primary-mets",
     "pre-post-soc",
     "pre-post-io",
-    "stats",
+    "ffpe-tma-plasma",
     "cta",
   ],
   "ai-cohorts": [

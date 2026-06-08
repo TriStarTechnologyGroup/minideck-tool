@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { slideCount, slideLabel, SLIDE_SLUGS } from "./slides";
 
 describe("slides", () => {
-  it("counts HBS slides", () => expect(slideCount("hbs")).toBe(8));
+  it("counts HBS slides", () => expect(slideCount("hbs")).toBe(14));
   it("counts AI Cohorts slides", () => expect(slideCount("ai-cohorts")).toBe(17));
   it("returns 0 for unknown deck", () => expect(slideCount("nope")).toBe(0));
   it("humanizes slugs", () => {
