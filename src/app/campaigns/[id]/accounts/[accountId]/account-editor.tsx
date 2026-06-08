@@ -6,6 +6,14 @@ import { touchDueDate } from "@/lib/cadence";
 
 export type TouchData = { id: string; seq: number; day_offset: number; subject: string | null; body: string | null; status: string; sent_at: string | null };
 
+/** Build a Gmail compose URL (opens a new message prefilled with to/cc/subject/body). */
+function gmailComposeUrl(to: string[], cc: string[], subject: string, body: string): string {
+  const parts = ["view=cm", "fs=1", `to=${encodeURIComponent(to.join(","))}`];
+  if (cc.length) parts.push(`cc=${encodeURIComponent(cc.join(","))}`);
+  parts.push(`su=${encodeURIComponent(subject)}`, `body=${encodeURIComponent(body)}`);
+  return `https://mail.google.com/mail/?${parts.join("&")}`;
+}
+
 export default function AccountEditor({
   accountId,
   startedAt,
@@ -13,6 +21,8 @@ export default function AccountEditor({
   context,
   angle,
   touches,
+  toEmails,
+  ccEmails,
 }: {
   accountId: string;
   startedAt: string | null;
@@ -20,6 +30,8 @@ export default function AccountEditor({
   context: string;
   angle: string;
   touches: TouchData[];
+  toEmails: string[];
+  ccEmails: string[];
 }) {
   const router = useRouter();
   const [fields, setFields] = useState({ research, context, angle });
@@ -55,7 +67,7 @@ export default function AccountEditor({
         {!startedAt && <p className="text-xs text-ink-muted">Mark Touch 1 sent to start the cadence clock (Touch 2 = +4d, Touch 3 = +9d).</p>}
         <div className="space-y-3">
           {touches.map((t) => (
-            <Touch key={t.id} t={t} startedAt={startedAt} onChange={() => router.refresh()} />
+            <Touch key={t.id} t={t} startedAt={startedAt} toEmails={toEmails} ccEmails={ccEmails} onChange={() => router.refresh()} />
           ))}
         </div>
       </section>
@@ -72,12 +84,16 @@ function Area({ label, v, on }: { label: string; v: string; on: (v: string) => v
   );
 }
 
-function Touch({ t, startedAt, onChange }: { t: TouchData; startedAt: string | null; onChange: () => void }) {
+function Touch({ t, startedAt, toEmails, ccEmails, onChange }: { t: TouchData; startedAt: string | null; toEmails: string[]; ccEmails: string[]; onChange: () => void }) {
   const [subject, setSubject] = useState(t.subject ?? "");
   const [body, setBody] = useState(t.body ?? "");
   const [busy, setBusy] = useState<null | "save" | "send">(null);
   const due = touchDueDate(startedAt, t.day_offset);
   const sent = t.status === "sent";
+
+  function openGmail() {
+    window.open(gmailComposeUrl(toEmails, ccEmails, subject, body), "_blank", "noopener");
+  }
 
   async function patch(payload: Record<string, unknown>, which: "save" | "send") {
     setBusy(which);
@@ -102,7 +118,10 @@ function Touch({ t, startedAt, onChange }: { t: TouchData; startedAt: string | n
       </div>
       <input className="input mb-2 w-full text-sm" placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
       <textarea className="input w-full font-mono text-xs" rows={6} placeholder="Body" value={body} onChange={(e) => setBody(e.target.value)} />
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button className="btn btn-primary btn-xs" onClick={openGmail} disabled={toEmails.length === 0} title={toEmails.length === 0 ? "No 'to' recipients on this account" : "Opens Gmail with to, cc, subject and body filled in"}>
+          ✉ Open in Gmail
+        </button>
         <button className="btn btn-ghost btn-xs" onClick={() => patch({ subject, body }, "save")} disabled={busy !== null}>{busy === "save" ? "Saving…" : "Save draft"}</button>
         <button className="btn btn-ghost btn-xs" onClick={() => navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)}>Copy</button>
       </div>

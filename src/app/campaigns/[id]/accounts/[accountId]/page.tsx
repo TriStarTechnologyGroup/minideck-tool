@@ -27,6 +27,8 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
   const contacts = (acs ?? []) as unknown as { role: string; is_primary: boolean; contact: { first_name: string; last_name: string; email: string; position: string | null } | null }[];
   const warmthChip: Record<string, string> = { hot: "bg-primary text-white", warm: "bg-surface-blue-soft text-link", light: "bg-surface-muted text-ink-muted" };
+  const toEmails = contacts.filter((c) => c.role === "to" && c.contact).map((c) => c.contact!.email);
+  const ccEmails = contacts.filter((c) => c.role === "cc" && c.contact).map((c) => c.contact!.email);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-10">
@@ -73,6 +75,8 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
         context={account.context ?? ""}
         angle={account.angle ?? ""}
         touches={(touches ?? []) as TouchData[]}
+        toEmails={toEmails}
+        ccEmails={ccEmails}
       />
     </main>
   );
