@@ -105,6 +105,7 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
       <section>
         <LinkTable
           rows={rows}
+          deckId={deck.id}
           hubspotOn={isHubspotConfigured()}
           plausibleOn={isPlausibleConfigured()}
           slideTotal={slideCount(deck.slug)}

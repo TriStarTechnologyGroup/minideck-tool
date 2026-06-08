@@ -79,3 +79,62 @@ export async function getLinkStats(siteId: string, token: string): Promise<LinkS
     artifactViews: artifact.results[0]?.metrics?.[0] ?? 0,
   };
 }
+
+/**
+ * Batched per-link stats for MANY tokens on one site, in a fixed number of
+ * grouped queries (dimensioned by `event:props:token`) instead of 5 per token.
+ * Returns a map token → LinkStats; tokens with no events get a zeroed entry.
+ */
+export async function getDeckLinkStats(
+  siteId: string,
+  tokens: string[],
+): Promise<Record<string, LinkStats>> {
+  const out: Record<string, LinkStats> = {};
+  for (const t of tokens) {
+    out[t] = { opened: false, views: 0, lastSeen: null, furthestSlide: 0, slides: [], artifactViews: 0 };
+  }
+  if (tokens.length === 0) return out;
+
+  const tokenFilter = ["is", "event:props:token", tokens];
+  const tok = "event:props:token";
+  const base = { site_id: siteId, date_range: "all" as const };
+
+  const [agg, byDay, reached, slideViews, artifact] = await Promise.all([
+    query({ ...base, metrics: ["pageviews"], dimensions: [tok], filters: [tokenFilter] }),
+    query({ ...base, metrics: ["pageviews"], dimensions: [tok, "time:day"], filters: [tokenFilter] }),
+    query({ ...base, metrics: ["events"], dimensions: [tok, "event:props:slide_index"], filters: [tokenFilter, ["is", "event:name", ["Slide Reached"]]] }),
+    query({ ...base, metrics: ["events"], dimensions: [tok, "event:props:slide"], filters: [tokenFilter, ["is", "event:name", ["Slide View"]]] }),
+    query({ ...base, metrics: ["events"], dimensions: [tok], filters: [tokenFilter, ["is", "event:name", ["Section View"]], ["is", "event:props:section", ["artifact"]]] }),
+  ]);
+
+  for (const r of agg.results) {
+    const t = r.dimensions?.[0];
+    if (t && out[t]) out[t].views = r.metrics?.[0] ?? 0;
+  }
+  for (const r of byDay.results) {
+    const t = r.dimensions?.[0];
+    const day = r.dimensions?.[1];
+    if (t && out[t] && day && (r.metrics?.[0] ?? 0) > 0) {
+      const ls = out[t].lastSeen;
+      if (!ls || day > ls) out[t].lastSeen = day;
+    }
+  }
+  for (const r of reached.results) {
+    const t = r.dimensions?.[0];
+    const idx = parseInt(r.dimensions?.[1] ?? "0", 10);
+    if (t && out[t] && Number.isFinite(idx) && idx > out[t].furthestSlide) out[t].furthestSlide = idx;
+  }
+  for (const r of slideViews.results) {
+    const t = r.dimensions?.[0];
+    if (t && out[t]) out[t].slides.push({ slide: r.dimensions?.[1] ?? "?", views: r.metrics?.[0] ?? 0 });
+  }
+  for (const r of artifact.results) {
+    const t = r.dimensions?.[0];
+    if (t && out[t]) out[t].artifactViews = r.metrics?.[0] ?? 0;
+  }
+  for (const t of tokens) {
+    out[t].opened = out[t].views > 0;
+    out[t].slides.sort((a, b) => b.views - a.views);
+  }
+  return out;
+}
