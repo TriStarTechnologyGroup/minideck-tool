@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import CopyButton from "@/components/copy-button";
+import { toCsv, downloadCsv } from "@/lib/csv";
 import HubspotRetry from "./hubspot-retry";
 
 export type LinkRow = {
@@ -136,18 +137,52 @@ export default function LinkTable({
   }
   const depth = (s: Stats) => (slideTotal ? `${s.furthestSlide} / ${slideTotal}` : String(s.furthestSlide));
 
+  function exportCsv() {
+    const out = visibleRows.map((r) => {
+      const s = cells[r.token]?.stats;
+      return {
+        contact: r.contact?.name ?? "",
+        email: r.contact?.email ?? "",
+        company: r.contact?.company ?? "",
+        link: r.full_url,
+        opened: s ? (s.opened ? "Yes" : "No") : "",
+        views: s?.views ?? "",
+        last_seen: s?.lastSeen ?? "",
+        engaged_seconds: s?.timeSeconds ?? "",
+        slide_depth: s ? (slideTotal ? `${s.furthestSlide}/${slideTotal}` : String(s.furthestSlide)) : "",
+        artifact: s ? (s.artifactViews > 0 ? "Yes" : "No") : "",
+        cta: s ? (s.ctaClicks?.cta_book_meeting ? "Meeting" : s.ctaClicks?.cta_inquire ? "Inquire" : "") : "",
+        created: new Date(r.created_at).toISOString().slice(0, 10),
+        hubspot_url: r.contact?.hubspot_url ?? "",
+      };
+    });
+    const cols = [
+      { key: "contact", label: "Contact" }, { key: "email", label: "Email" }, { key: "company", label: "Company" },
+      { key: "link", label: "Link" }, { key: "opened", label: "Opened" }, { key: "views", label: "Views" },
+      { key: "last_seen", label: "Last seen" }, { key: "engaged_seconds", label: "Engaged seconds" },
+      { key: "slide_depth", label: "Slide depth" }, { key: "artifact", label: "Artifact" }, { key: "cta", label: "CTA" },
+      { key: "created", label: "Created" }, { key: "hubspot_url", label: "HubSpot" },
+    ];
+    downloadCsv("minideck-links.csv", toCsv(cols, out as unknown as Record<string, unknown>[]));
+  }
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-display text-lg font-medium text-ink">
           Links <span className="font-sans text-base font-normal text-ink-muted">({visibleRows.length})</span>
         </h2>
-        {plausibleOn && visibleRows.length > 0 && (
+        {visibleRows.length > 0 && (
           <div className="flex items-center gap-2 text-xs text-ink-muted">
-            {refreshedAt && <span className="hidden sm:inline">updated {refreshedAt}</span>}
-            <button type="button" onClick={loadStats} disabled={loading} className="btn btn-ghost btn-xs">
-              {loading ? "Refreshing…" : "Refresh stats"}
+            {plausibleOn && refreshedAt && <span className="hidden sm:inline">updated {refreshedAt}</span>}
+            <button type="button" onClick={exportCsv} className="btn btn-ghost btn-xs">
+              Export CSV
             </button>
+            {plausibleOn && (
+              <button type="button" onClick={loadStats} disabled={loading} className="btn btn-ghost btn-xs">
+                {loading ? "Refreshing…" : "Refresh stats"}
+              </button>
+            )}
           </div>
         )}
       </div>

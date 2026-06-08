@@ -7,6 +7,7 @@ import { isHubspotConfigured } from "@/lib/hubspot";
 import { isPlausibleConfigured } from "@/lib/plausible";
 import { slideCount } from "@/lib/slides";
 import NewLinkForm from "./new-link-form";
+import BulkForm from "./bulk-form";
 import LinkTable, { type LinkRow } from "./link-table";
 import DeckHeatmap from "./deck-heatmap";
 
@@ -101,6 +102,8 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
       </div>
 
       <NewLinkForm deckId={deck.id} />
+
+      <BulkForm deckId={deck.id} />
 
       <section>
         <LinkTable
