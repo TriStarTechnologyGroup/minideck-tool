@@ -15,6 +15,9 @@
   if (window.__tristarTracker) return; // safe to load twice
   window.__tristarTracker = true;
 
+  // Honor the opt-out set on the /privacy page: no pageview, no events, no beacons.
+  try { if (localStorage.getItem("tristar_optout") === "1") return; } catch (e) {}
+
   var el = document.currentScript || document.querySelector("script[data-deck]");
   var deck = (el && el.getAttribute("data-deck")) || "";
   var ingestUrl = "https://decks.tristargroup.us/api/ingest";
