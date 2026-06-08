@@ -55,12 +55,14 @@ function Skel({ w = "w-8" }: { w?: string }) {
 
 export default function LinkTable({
   rows,
+  deckId,
   hubspotOn,
   plausibleOn,
   slideTotal,
   isAdmin = false,
 }: {
   rows: LinkRow[];
+  deckId: string;
   hubspotOn: boolean;
   plausibleOn: boolean;
   slideTotal: number;
@@ -98,21 +100,27 @@ export default function LinkTable({
     if (!plausibleOn || rows.length === 0) return;
     setLoading(true);
     setCells(Object.fromEntries(rows.map((r) => [r.token, { state: "loading" as const }])));
-    await Promise.all(
-      rows.map(async (r) => {
-        try {
-          const res = await fetch(`/api/links/${r.token}/stats`);
-          if (!res.ok) throw new Error();
-          const json = await res.json();
-          setCells((c) => ({ ...c, [r.token]: { state: "ok", stats: json.stats } }));
-        } catch {
-          setCells((c) => ({ ...c, [r.token]: { state: "error" } }));
-        }
-      }),
-    );
+    try {
+      // One batched call for the whole deck (grouped Plausible query + engagement),
+      // instead of one request per link.
+      const res = await fetch(`/api/decks/${deckId}/stats`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      const map: Record<string, Stats> = json.stats ?? {};
+      setCells(
+        Object.fromEntries(
+          rows.map((r) => [
+            r.token,
+            map[r.token] ? { state: "ok" as const, stats: map[r.token] } : { state: "error" as const },
+          ]),
+        ),
+      );
+    } catch {
+      setCells(Object.fromEntries(rows.map((r) => [r.token, { state: "error" as const }])));
+    }
     setRefreshedAt(new Date().toLocaleTimeString());
     setLoading(false);
-  }, [rows, plausibleOn]);
+  }, [rows, plausibleOn, deckId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
