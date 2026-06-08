@@ -15,6 +15,9 @@ const schema = z.object({
   // HubSpot
   HUBSPOT_TOKEN: z.string().default(""),
   HUBSPOT_PORTAL_ID: z.string().default(""),
+  // Optional fallback owner for engagement tasks when the link creator can't be
+  // matched to a HubSpot owner. Leave unset to leave such tasks unassigned.
+  HUBSPOT_DEFAULT_OWNER_ID: z.string().default(""),
   // Plausible
   PLAUSIBLE_API_KEY: z.string().default(""),
   // Screenshots (Microlink) — optional even in prod (free tier needs no key)
