@@ -80,7 +80,7 @@
   );
 
   var SLIDES = {
-    hbs: ["overview", "advanced-disease", "longitudinal", "primary-mets", "pre-post-soc", "pre-post-io", "stats", "cta"],
+    hbs: ["overview", "imaging-clinical-data", "donor-profiles", "cohorts-available", "core-partner", "stats", "advanced-disease", "longitudinal", "longitudinal-nsclc", "primary-mets", "pre-post-soc", "pre-post-io", "ffpe-tma-plasma", "cta"],
     "ai-cohorts": ["overview", "imaging-clinical-data", "donor-profiles", "cohorts-available", "positioning", "repository", "core-partner", "scanning-capabilities", "stats", "advanced-disease", "longitudinal", "longitudinal-nsclc", "primary-mets", "pre-post-soc", "pre-post-io", "ffpe-tma-plasma", "cta"],
   };
 
