@@ -23,11 +23,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const siteId = (campaign?.deck as { plausible_site_id?: string } | null)?.plausible_site_id;
   if (!siteId) return NextResponse.json({ error: "Campaign or deck not found" }, { status: 404 });
 
-  // Tokens of all account links in this campaign.
-  const { data: links } = await admin
-    .from("links")
-    .select("token, account:accounts!inner(campaign_id)")
-    .eq("account.campaign_id", id);
+  // Tokens of all account links in this campaign. Resolve via account ids in two
+  // steps: `links` and `accounts` have two FKs between them (links.account_id and
+  // accounts.link_id), so an `accounts!inner` embed is ambiguous and returns nothing.
+  const { data: accts } = await admin.from("accounts").select("id").eq("campaign_id", id);
+  const acctIds = (accts ?? []).map((a: { id: string }) => a.id);
+  const { data: links } = acctIds.length
+    ? await admin.from("links").select("token").in("account_id", acctIds)
+    : { data: [] as { token: string }[] };
   const tokens = (links ?? []).map((l: { token: string }) => l.token);
 
   const stats = await getMergedStatsForTokens(siteId, tokens);
