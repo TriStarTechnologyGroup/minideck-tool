@@ -24,6 +24,10 @@ const schema = z.object({
   SCREENSHOT_API_KEY: z.string().default(""),
   // App
   APP_BASE_URL: z.string().default("http://localhost:3000"),
+  // Shared secret for the scheduled cron backstop (/api/cron/sweep). Vercel Cron
+  // sends it as a Bearer token when set. Leave blank to disable bearer auth (the
+  // route then requires an admin session).
+  CRON_SECRET: z.string().default(""),
   // Public values are also readable server-side
   NEXT_PUBLIC_SUPABASE_URL: z.string().default(""),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().default(""),

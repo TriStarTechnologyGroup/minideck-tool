@@ -65,3 +65,11 @@ fallback). Env vars are configured in Vercel Project Settings (mirror `.env.exam
 
 DB migrations are **not** part of the Vercel build — apply them separately with
 `node --env-file=.env.local scripts/apply-migrations.mjs` (idempotent).
+
+### Cron backstop
+
+`vercel.json` schedules `GET /api/cron/sweep` hourly. It re-fires milestone HubSpot
+alerts that the live `/api/ingest` beacon path never delivered (e.g. HubSpot was down
+and no later beacon retried). Set **`CRON_SECRET`** in Vercel Project Settings — Vercel
+Cron sends it as a Bearer token; without it the route falls back to requiring an admin
+session. Scheduled crons more frequent than daily require a Vercel **Pro** plan.
