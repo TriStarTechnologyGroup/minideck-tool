@@ -6,8 +6,8 @@ import {
   isHubspotConfigured,
   createEngagementTask,
   updateContactProperties,
-  getOwnerIdByEmail,
 } from "@/lib/hubspot";
+import { resolveOwner, sendMilestoneAlert } from "@/lib/alerts";
 import { rateLimit } from "@/lib/rate-limit";
 import { clampSeconds as clamp, computeEngagement } from "@/lib/engagement";
 
@@ -59,11 +59,7 @@ export async function POST(req: NextRequest) {
   async function ownerFor(): Promise<string | null> {
     if (_ownerResolved) return _ownerId;
     _ownerResolved = true;
-    if (createdBy) {
-      const { data: prof } = await admin.from("profiles").select("email").eq("id", createdBy).maybeSingle();
-      if (prof?.email) _ownerId = await getOwnerIdByEmail(prof.email);
-    }
-    if (!_ownerId && serverEnv.HUBSPOT_DEFAULT_OWNER_ID) _ownerId = serverEnv.HUBSPOT_DEFAULT_OWNER_ID;
+    _ownerId = await resolveOwner(admin, createdBy);
     return _ownerId;
   }
 
@@ -130,29 +126,26 @@ export async function POST(req: NextRequest) {
 
   // Fire HubSpot alert + write-back on milestone crossings (best-effort, bounded).
   if (crossed.length && isHubspotConfigured() && contact?.hubspot_id && deck) {
-    const name = `${contact.first_name} ${contact.last_name}`.trim() || "A prospect";
-    const subject = `🔔 ${name} engaged with ${deck.name}`;
-    const bodyText =
-      `${name} ${crossed.join("; ")} (${deck.name}).\n` +
-      `Furthest slide ${computed.furthest_index}${total ? `/${total}` : ""} · engaged ${Math.round(computed.deck_seconds)}s` +
-      `${artifactOpened ? " · opened data page" : ""}.\n` +
-      `Full view: ${APP}/links/${token}`;
     try {
-      await createEngagementTask(contact.hubspot_id, subject, bodyText, await ownerFor());
-      await updateContactProperties(contact.hubspot_id, {
-        minideck_last_deck: deck.name,
-        minideck_last_viewed: String(Date.now()),
-        minideck_slide_depth: String(computed.furthest_index),
-        minideck_engaged_seconds: String(Math.round(computed.deck_seconds)),
-        minideck_reached_cta: computed.reached_cta ? "true" : "false",
-        minideck_artifact_opened: artifactOpened ? "true" : "false",
-      });
-      // Mark notified so we don't repeat.
-      if (crossed.some((c) => c.startsWith("opened the deck"))) row.opened_notified_at = now;
-      if (computed.reached_cta) row.cta_notified_at = now;
-      if (artifactOpened) row.artifact_notified_at = now;
+      const patch = await sendMilestoneAlert(
+        admin,
+        {
+          token,
+          deck,
+          contact,
+          createdBy,
+          crossed,
+          furthest: computed.furthest_index,
+          total,
+          deckSeconds: computed.deck_seconds,
+          artifactOpened,
+          reachedCta: computed.reached_cta,
+        },
+        now,
+      );
+      Object.assign(row, patch);
     } catch (err) {
-      // leave *_notified_at unset → retried on the next beacon
+      // leave *_notified_at unset → retried on the next beacon (or the cron backstop)
       console.error("[ingest] milestone HubSpot alert failed for token", token, err);
     }
   }

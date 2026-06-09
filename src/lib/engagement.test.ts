@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampSeconds, computeEngagement, MAX_SECONDS, type ExistingEngagement } from "./engagement";
+import { clampSeconds, computeEngagement, pendingMilestones, MAX_SECONDS, type ExistingEngagement } from "./engagement";
 
 const ORDER = ["overview", "stats", "cta"]; // 3-slide deck
 const TOTAL = 3;
@@ -96,6 +96,45 @@ describe("computeEngagement — once-only milestones", () => {
     };
     const { crossed } = computeEngagement(existing, { surface: "deck", seconds: 99, perSlide: { cta: 99 } }, ORDER, TOTAL, NOW);
     expect(crossed).toEqual([]);
+  });
+});
+
+describe("pendingMilestones (cron backstop condition)", () => {
+  it("returns nothing for a fresh/empty row", () => {
+    expect(pendingMilestones({})).toEqual([]);
+  });
+
+  it("flags an open whose alert never fired (recovers what per-beacon 'crossed' drops)", () => {
+    expect(pendingMilestones({ first_seen_at: NOW, opened_notified_at: null })).toEqual(["opened the deck"]);
+  });
+
+  it("flags reached-CTA and artifact when unnotified", () => {
+    const pending = pendingMilestones({
+      first_seen_at: NOW,
+      opened_notified_at: NOW,
+      reached_cta: true,
+      cta_notified_at: null,
+      artifact_seconds: 8,
+      artifact_notified_at: null,
+    });
+    expect(pending).toEqual(["reached the call-to-action", "opened the data/example page"]);
+  });
+
+  it("returns nothing once everything is notified", () => {
+    expect(
+      pendingMilestones({
+        first_seen_at: NOW,
+        opened_notified_at: NOW,
+        reached_cta: true,
+        cta_notified_at: NOW,
+        artifact_seconds: 8,
+        artifact_notified_at: NOW,
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not flag artifact when there is no recorded artifact time", () => {
+    expect(pendingMilestones({ first_seen_at: NOW, opened_notified_at: NOW, artifact_seconds: 0 })).toEqual([]);
   });
 });
 

@@ -55,6 +55,20 @@ export interface ComputedEngagement {
  * Pure: the caller passes `now` (ISO) and the deck's slide `order`/`total`, so the
  * result is fully deterministic.
  */
+/**
+ * Milestones that are TRUE in the persisted row but were never notified — the
+ * condition the cron backstop sweep retries. Unlike the per-beacon `crossed`
+ * (which gates "opened" on the first beacon), this keys purely off stored state,
+ * so it also recovers an "opened" alert that failed after the first beacon.
+ */
+export function pendingMilestones(row: ExistingEngagement): string[] {
+  const out: string[] = [];
+  if (row.first_seen_at && !row.opened_notified_at) out.push("opened the deck");
+  if (row.reached_cta && !row.cta_notified_at) out.push("reached the call-to-action");
+  if ((row.artifact_seconds ?? 0) > 0 && !row.artifact_notified_at) out.push("opened the data/example page");
+  return out;
+}
+
 export function computeEngagement(
   existing: ExistingEngagement | null,
   beacon: Beacon,
