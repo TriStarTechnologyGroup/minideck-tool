@@ -5,15 +5,16 @@ Internal TriStar sales tool: generate trackable per-prospect links to the brande
 Plausible. Next.js (App Router) + Supabase + HubSpot + Plausible, deployed on Vercel at
 **`decks.tristargroup.us`**.
 
-Specs live one level up: [`../planning.md`](../planning.md) (the app),
-[`../minideck-tracking-spec.md`](../minideck-tracking-spec.md) (deck-repo changes),
-[`../SETUP.md`](../SETUP.md) (provisioning runbook).
+Specs live in [`docs/`](docs/): [`planning.md`](docs/planning.md) (the app),
+[`minideck-tracking-spec.md`](docs/minideck-tracking-spec.md) (deck-repo changes),
+[`SETUP.md`](docs/SETUP.md) (provisioning runbook), [`DEPLOY.md`](docs/DEPLOY.md),
+[`abm-campaigns-plan.md`](docs/abm-campaigns-plan.md).
 
 ## Getting started
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in as you provision (see ../SETUP.md)
+cp .env.example .env.local   # fill in as you provision (see docs/SETUP.md)
 npm run dev                  # http://localhost:3000
 ```
 
@@ -44,11 +45,11 @@ Carousel-aware Plausible tracker pasted into the deck repos. Pairs with Plausibl
 **manual** base script. Resolves the opaque `?t=<token>`, fires one token-tagged
 pageview, and emits per-slide (`Slide Reached` / `Slide View`) and artifact-page
 (`Section View`) events. Slide slug taxonomy is centralized in this file, keyed by deck.
-See `../minideck-tracking-spec.md`.
+See [`docs/minideck-tracking-spec.md`](docs/minideck-tracking-spec.md).
 
 ## Build order
 
-Following [`../planning.md` §13](../planning.md). **Done:** Milestone 1 (scaffold + env +
+Following [`docs/planning.md` §13](docs/planning.md). **Done:** Milestone 1 (scaffold + env +
 Supabase clients + track.js). **Next:** Auth & roles -> Schema & RLS -> Decks ->
 Contacts + links -> HubSpot -> wire track.js into the decks -> Plausible stats.
 
