@@ -9,14 +9,14 @@ import {
   getOwnerIdByEmail,
 } from "@/lib/hubspot";
 import { rateLimit } from "@/lib/rate-limit";
+import { clampSeconds as clamp, computeEngagement } from "@/lib/engagement";
 
 // POST /api/ingest — PUBLIC engagement beacon from track.js (sendBeacon, text/plain).
 // Body: { token, surface:"deck"|"artifact", seconds, perSlide }. Cumulative (max-seen).
 // On milestone crossings (opened / reached CTA / opened artifact) it fires a HubSpot
 // task + writes engagement back to the contact's Minideck properties (best-effort).
+// The max-seen merge + milestone logic lives in @/lib/engagement (pure, unit-tested).
 
-const MAX_SECONDS = 86_400;
-const clamp = (n: unknown) => Math.min(MAX_SECONDS, Math.max(0, Math.floor(Number(n) || 0)));
 const noContent = () => new NextResponse(null, { status: 204 });
 const APP = serverEnv.APP_BASE_URL || "https://decks.tristargroup.us";
 
@@ -116,47 +116,17 @@ export async function POST(req: NextRequest) {
     .eq("token", token)
     .maybeSingle();
 
-  // Merge per-slide (max), compute depth + CTA.
-  const perSlide: Record<string, number> = { ...((existing?.per_slide as Record<string, number>) ?? {}) };
-  if (surface === "deck" && body.perSlide && typeof body.perSlide === "object") {
-    for (const [slug, v] of Object.entries(body.perSlide)) {
-      if (/^[a-z0-9-]{1,64}$/.test(slug)) perSlide[slug] = Math.max(perSlide[slug] ?? 0, clamp(v));
-    }
-  }
   const order = deck ? SLIDE_SLUGS[deck.slug] ?? [] : [];
-  let furthest = existing?.furthest_index ?? 0;
-  for (const slug of Object.keys(perSlide)) {
-    const idx = order.indexOf(slug);
-    if (idx + 1 > furthest) furthest = idx + 1;
-  }
   const total = deck ? slideCount(deck.slug) : 0;
-  const reachedCta = (existing?.reached_cta ?? false) || (total > 0 && furthest >= total);
-  const artifactOpened = surface === "artifact" || (existing?.artifact_seconds ?? 0) > 0;
-
-  const deckSeconds = surface === "deck" ? Math.max(existing?.deck_seconds ?? 0, seconds) : existing?.deck_seconds ?? 0;
-  const artifactSeconds = surface === "artifact" ? Math.max(existing?.artifact_seconds ?? 0, seconds) : existing?.artifact_seconds ?? 0;
-  const now = new Date().toISOString();
-
-  // Which milestones are newly crossed (and not yet notified)?
-  const crossed: string[] = [];
-  const isFirst = !existing?.first_seen_at;
-  if (isFirst && !existing?.opened_notified_at) crossed.push("opened the deck");
-  if (reachedCta && !existing?.cta_notified_at) crossed.push("reached the call-to-action");
-  if (artifactOpened && !existing?.artifact_notified_at) crossed.push("opened the data/example page");
-
-  const row: Record<string, unknown> = {
-    token,
-    deck_seconds: deckSeconds,
-    artifact_seconds: artifactSeconds,
-    per_slide: perSlide,
-    furthest_index: furthest,
-    reached_cta: reachedCta,
-    first_seen_at: existing?.first_seen_at ?? now,
-    opened_notified_at: existing?.opened_notified_at ?? null,
-    cta_notified_at: existing?.cta_notified_at ?? null,
-    artifact_notified_at: existing?.artifact_notified_at ?? null,
-    updated_at: now,
-  };
+  const { row: computed, crossed, artifactOpened } = computeEngagement(
+    existing,
+    { surface, seconds, perSlide: body.perSlide ?? null },
+    order,
+    total,
+    new Date().toISOString(),
+  );
+  const now = computed.updated_at;
+  const row: Record<string, unknown> = { token, ...computed };
 
   // Fire HubSpot alert + write-back on milestone crossings (best-effort, bounded).
   if (crossed.length && isHubspotConfigured() && contact?.hubspot_id && deck) {
@@ -164,7 +134,7 @@ export async function POST(req: NextRequest) {
     const subject = `🔔 ${name} engaged with ${deck.name}`;
     const bodyText =
       `${name} ${crossed.join("; ")} (${deck.name}).\n` +
-      `Furthest slide ${furthest}${total ? `/${total}` : ""} · engaged ${Math.round(deckSeconds)}s` +
+      `Furthest slide ${computed.furthest_index}${total ? `/${total}` : ""} · engaged ${Math.round(computed.deck_seconds)}s` +
       `${artifactOpened ? " · opened data page" : ""}.\n` +
       `Full view: ${APP}/links/${token}`;
     try {
@@ -172,14 +142,14 @@ export async function POST(req: NextRequest) {
       await updateContactProperties(contact.hubspot_id, {
         minideck_last_deck: deck.name,
         minideck_last_viewed: String(Date.now()),
-        minideck_slide_depth: String(furthest),
-        minideck_engaged_seconds: String(Math.round(deckSeconds)),
-        minideck_reached_cta: reachedCta ? "true" : "false",
+        minideck_slide_depth: String(computed.furthest_index),
+        minideck_engaged_seconds: String(Math.round(computed.deck_seconds)),
+        minideck_reached_cta: computed.reached_cta ? "true" : "false",
         minideck_artifact_opened: artifactOpened ? "true" : "false",
       });
       // Mark notified so we don't repeat.
       if (crossed.some((c) => c.startsWith("opened the deck"))) row.opened_notified_at = now;
-      if (reachedCta) row.cta_notified_at = now;
+      if (computed.reached_cta) row.cta_notified_at = now;
       if (artifactOpened) row.artifact_notified_at = now;
     } catch (err) {
       // leave *_notified_at unset → retried on the next beacon
