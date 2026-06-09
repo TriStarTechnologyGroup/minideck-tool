@@ -33,57 +33,14 @@ async function query(body: QueryBody): Promise<{ results: Row[] }> {
 }
 
 /**
- * Lifetime per-link stats for one token on a given Plausible site.
+ * Per-link stats for one or more tokens on a Plausible site, in a fixed number of
+ * grouped queries (dimensioned by `event:props:token`) rather than 5 per token.
+ * Returns a map token → LinkStats; tokens with no events get a zeroed entry.
  *
  * IMPORTANT: only EVENT-LEVEL metrics (pageviews, events) can be filtered by an
  * event-level custom property like `token`. Session-level metrics (visit_duration,
  * bounce_rate, visits, visitors) are NOT correctly scoped by `event:props:token` —
  * Plausible returns the site-wide value — so we deliberately do not use them here.
- */
-export async function getLinkStats(siteId: string, token: string): Promise<LinkStats> {
-  const tokenFilter = ["is", "event:props:token", [token]];
-  const base = { site_id: siteId, date_range: "all" as const };
-
-  const [agg, byDay, reached, slideViews, artifact] = await Promise.all([
-    query({ ...base, metrics: ["pageviews"], filters: [tokenFilter] }),
-    query({ ...base, metrics: ["pageviews"], dimensions: ["time:day"], filters: [tokenFilter] }),
-    query({ ...base, metrics: ["events"], dimensions: ["event:props:slide_index"], filters: [tokenFilter, ["is", "event:name", ["Slide Reached"]]] }),
-    query({ ...base, metrics: ["events"], dimensions: ["event:props:slide"], filters: [tokenFilter, ["is", "event:name", ["Slide View"]]] }),
-    query({ ...base, metrics: ["events"], filters: [tokenFilter, ["is", "event:name", ["Section View"]], ["is", "event:props:section", ["artifact"]]] }),
-  ]);
-
-  const views = agg.results[0]?.metrics?.[0] ?? 0;
-
-  let lastSeen: string | null = null;
-  for (const row of byDay.results) {
-    const day = row.dimensions?.[0];
-    if (day && (row.metrics?.[0] ?? 0) > 0 && (!lastSeen || day > lastSeen)) lastSeen = day;
-  }
-
-  let furthestSlide = 0;
-  for (const row of reached.results) {
-    const idx = parseInt(row.dimensions?.[0] ?? "0", 10);
-    if (Number.isFinite(idx) && idx > furthestSlide) furthestSlide = idx;
-  }
-
-  const slides = slideViews.results
-    .map((r) => ({ slide: r.dimensions?.[0] ?? "?", views: r.metrics?.[0] ?? 0 }))
-    .sort((a, b) => b.views - a.views);
-
-  return {
-    opened: views > 0,
-    views,
-    lastSeen,
-    furthestSlide,
-    slides,
-    artifactViews: artifact.results[0]?.metrics?.[0] ?? 0,
-  };
-}
-
-/**
- * Batched per-link stats for MANY tokens on one site, in a fixed number of
- * grouped queries (dimensioned by `event:props:token`) instead of 5 per token.
- * Returns a map token → LinkStats; tokens with no events get a zeroed entry.
  */
 export async function getDeckLinkStats(
   siteId: string,
