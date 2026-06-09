@@ -28,7 +28,8 @@ export async function getMergedStats(siteId: string, token: string): Promise<Ful
   if (isPlausibleConfigured()) {
     try {
       plausible = await getLinkStats(siteId, token);
-    } catch {
+    } catch (err) {
+      console.error("[link-stats] Plausible query failed for token", token, err);
       plausible = null;
     }
   }
@@ -69,7 +70,8 @@ export async function getMergedStatsForTokens(
   if (isPlausibleConfigured()) {
     try {
       plausibleMap = await getDeckLinkStats(siteId, tokens);
-    } catch {
+    } catch (err) {
+      console.error("[link-stats] batched Plausible query failed", err);
       plausibleMap = {};
     }
   }
