@@ -22,7 +22,8 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
       target: entry.target ?? null,
       detail: entry.detail ?? {},
     });
-  } catch {
-    /* swallow */
+  } catch (err) {
+    // Never block the underlying action, but make audit loss visible in logs.
+    console.error("[audit] failed to record event", entry.action, err);
   }
 }

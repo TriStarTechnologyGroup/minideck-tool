@@ -99,8 +99,8 @@ export async function POST(req: NextRequest) {
           minideck_last_viewed: String(Date.now()),
           minideck_last_deck: deck.name,
         });
-      } catch {
-        /* best-effort */
+      } catch (err) {
+        console.error("[ingest] CTA HubSpot alert failed for token", token, err);
       }
     }
 
@@ -181,8 +181,9 @@ export async function POST(req: NextRequest) {
       if (crossed.some((c) => c.startsWith("opened the deck"))) row.opened_notified_at = now;
       if (reachedCta) row.cta_notified_at = now;
       if (artifactOpened) row.artifact_notified_at = now;
-    } catch {
+    } catch (err) {
       // leave *_notified_at unset → retried on the next beacon
+      console.error("[ingest] milestone HubSpot alert failed for token", token, err);
     }
   }
 

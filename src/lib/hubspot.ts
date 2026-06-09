@@ -150,7 +150,8 @@ export async function getOwnerIdByEmail(email: string): Promise<string | null> {
   try {
     const res = await fetch(`${BASE}/crm/v3/owners?email=${encodeURIComponent(key)}&limit=1`, { headers: headers() });
     if (res.ok) id = (await res.json()).results?.[0]?.id ?? null;
-  } catch {
+  } catch (err) {
+    console.error("[hubspot] owner lookup failed for", key, err);
     id = null;
   }
   ownerCache.set(key, id);

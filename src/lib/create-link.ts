@@ -108,11 +108,13 @@ export async function createOrReuseLink(
             date: new Date().toISOString().slice(0, 10),
             userEmail: actor.email,
           });
-        } catch {
+        } catch (err) {
+          console.error("[create-link] HubSpot note failed for", f.email, err);
           hubspotWarning = "Contact synced, but the timeline note failed.";
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("[create-link] HubSpot sync failed for", f.email, err);
       hubspotWarning = "HubSpot sync failed — link created. Use Retry sync.";
     }
   }
