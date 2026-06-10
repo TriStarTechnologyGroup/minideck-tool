@@ -20,6 +20,17 @@ const fields = z.object({
   core_size: z.string().trim().nullish(),
   markers: z.string().trim().nullish(),
   suitable_for: z.string().trim().nullish(),
+  suitable_for_codex: z.string().trim().nullish(),
+  cancer: z.string().trim().nullish(),
+  product_cat: z.string().trim().nullish(),
+  follow_up_data: z.string().trim().nullish(),
+  molecular_data: z.string().trim().nullish(),
+  number_of_cores: z.string().trim().nullish(),
+  number_of_donors: z.string().trim().nullish(),
+  images: z.string().trim().nullish(),
+  data_sheet: z.string().trim().nullish(),
+  gcp_dzi_file: z.string().trim().nullish(),
+  position: num,
 });
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), data: fields }),
