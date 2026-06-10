@@ -14,6 +14,13 @@ type Opp = {
   suggested_capabilities: string | null; rationale: string | null; run_label: string | null;
 };
 type Cohort = { id: string; ta_number: string | null; cohort: string | null; markers: string | null; donors: number | null; category: string | null; custom_stain: boolean };
+type Trial = {
+  id: string; nct_id: string | null; title: string | null; status: string | null; phase: string | null;
+  enrollment: number | null; start_date: string | null; primary_completion_date: string | null;
+  conditions: string | null; interventions: string | null; primary_endpoints: string | null;
+  tissue_requirements: string | null; selection_biomarkers: string | null; relevance_flags: string | null;
+  has_results: boolean; url: string | null;
+};
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser();
@@ -28,12 +35,14 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   if (!opp) notFound();
   const o = opp as Opp;
 
-  const [{ data: cohortRows }, { data: campaignList }, { data: deckList }] = await Promise.all([
+  const [{ data: cohortRows }, { data: trialRows }, { data: campaignList }, { data: deckList }] = await Promise.all([
     supabase.from("opportunity_cohorts").select("id, ta_number, cohort, markers, donors, category, custom_stain").eq("opportunity_id", id).order("sort_order"),
+    supabase.from("opportunity_trials").select("id, nct_id, title, status, phase, enrollment, start_date, primary_completion_date, conditions, interventions, primary_endpoints, tissue_requirements, selection_biomarkers, relevance_flags, has_results, url").eq("opportunity_id", id).order("sort_order"),
     supabase.from("campaigns").select("id, name").eq("status", "active").order("created_at", { ascending: false }),
     supabase.from("decks").select("id, name").eq("archived", false).order("name"),
   ]);
   const cohorts = (cohortRows ?? []) as Cohort[];
+  const trials = (trialRows ?? []) as Trial[];
   const campaigns = (campaignList ?? []) as { id: string; name: string }[];
   const decks = (deckList ?? []) as { id: string; name: string }[];
 
@@ -148,6 +157,54 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           Markers shown are pre-run on that SKU; “custom stain” means the program target is added as a custom IHC stain. Donor counts are catalog figures.
         </p>
       </section>
+
+      {trials.length > 0 && (
+        <section>
+          <h2 className="mb-2 font-display text-lg font-medium text-ink">
+            Clinical evidence <span className="font-sans text-sm font-normal text-ink-muted">({trials.length} {trials.length === 1 ? "trial" : "trials"})</span>
+          </h2>
+          <div className="flex flex-col gap-3">
+            {trials.map((t) => {
+              const flags = (t.relevance_flags ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+              const meta = [
+                t.status, t.phase, t.enrollment != null ? `n=${t.enrollment.toLocaleString()}` : null,
+                [t.start_date, t.primary_completion_date].filter(Boolean).join(" → ") || null,
+              ].filter(Boolean);
+              return (
+                <div key={t.id} className="card p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {t.nct_id && (
+                      <a href={t.url ?? `https://clinicaltrials.gov/study/${t.nct_id}`} target="_blank" rel="noreferrer" className="font-mono text-sm font-medium text-link hover:underline">{t.nct_id}</a>
+                    )}
+                    {t.has_results && <span className="chip bg-surface-blue-soft text-link">results available</span>}
+                    {meta.length > 0 && <span className="text-xs text-ink-muted">{meta.join(" · ")}</span>}
+                  </div>
+                  {t.title && <p className="mt-1.5 text-sm text-ink">{t.title}</p>}
+
+                  {flags.length > 0 && (
+                    <div className="mt-3">
+                      <div className="mb-1.5 text-[0.7rem] uppercase tracking-wide text-ink-muted">Why it matters to TriStar</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {flags.map((fl, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 rounded-sm bg-surface-blue-soft px-2 py-0.5 text-xs text-link">{fl}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+                    {t.interventions && <div><span className="font-medium text-ink">Regimen:</span> <span className="text-ink-muted">{t.interventions}</span></div>}
+                    {t.conditions && <div><span className="font-medium text-ink">Indications:</span> <span className="text-ink-muted">{t.conditions}</span></div>}
+                    {t.tissue_requirements && <div><span className="font-medium text-ink">Tissue:</span> <span className="text-ink-muted">{t.tissue_requirements}</span></div>}
+                    {t.selection_biomarkers && <div><span className="font-medium text-ink">Selection:</span> <span className="text-ink-muted">{t.selection_biomarkers}</span></div>}
+                    {t.primary_endpoints && <div className="sm:col-span-2"><span className="font-medium text-ink">Endpoints:</span> <span className="text-ink-muted">{t.primary_endpoints}</span></div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-2 font-display text-lg font-medium text-ink">Take it to market</h2>
