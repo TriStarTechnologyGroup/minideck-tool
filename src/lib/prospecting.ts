@@ -138,6 +138,9 @@ const capability = z.object({
 
 export const prospectingPayload = z.object({
   run_label: z.string().optional(),
+  // "append" (default) adds opportunities; "refresh" upserts by (company, asset) — updates the
+  // opportunity + replaces its skill-owned children, preserving reviewer feedback + added capabilities.
+  mode: z.enum(["append", "refresh"]).optional(),
   companies: z.array(company).optional(),
   drug_programs: z.array(drugProgram).optional(),
   opportunities: z.array(opportunity).optional(),
@@ -193,30 +196,41 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
 
   if (payload.opportunities?.length) {
     // Split each opportunity into its row (cohorts/hint stripped) and its cohort list.
-    const prepared = payload.opportunities.map(({ company_hubspot_id, cohorts, trials, score_components, capabilities, ...o }) => ({
-      row: { ...o, run_label: o.run_label ?? payload.run_label ?? null, company_id: resolve({ company_hubspot_id, company_name: o.company_name }) },
-      cohorts: cohorts ?? [],
-      trials: trials ?? [],
-      scoreComponents: score_components ?? [],
-      capabilities: capabilities ?? [],
-    }));
-    // Insert returning ids in order so each opportunity's cohorts/trials can be linked.
-    const { data: inserted, error } = await admin.from("opportunities").insert(prepared.map((p) => p.row)).select("id");
-    if (error) throw new Error(`opportunities insert: ${error.message}`);
-    counts.opportunities = prepared.length;
-
+    const mode = payload.mode ?? "append";
     const cohortRows: Record<string, unknown>[] = [];
     const trialRows: Record<string, unknown>[] = [];
     const componentRows: Record<string, unknown>[] = [];
     const capabilityRows: Record<string, unknown>[] = [];
-    prepared.forEach((p, i) => {
-      const oppId = (inserted ?? [])[i]?.id;
-      if (!oppId) return;
-      p.cohorts.forEach((c, j) => cohortRows.push({ opportunity_id: oppId, ...c, sort_order: j }));
-      p.trials.forEach((t, j) => trialRows.push({ opportunity_id: oppId, ...t, sort_order: j }));
-      p.scoreComponents.forEach((s, j) => componentRows.push({ opportunity_id: oppId, ...s, sort_order: j }));
-      p.capabilities.forEach((c) => capabilityRows.push({ opportunity_id: oppId, ...c, source: "suggested" }));
-    });
+
+    for (const { company_hubspot_id, cohorts, trials, score_components, capabilities, ...o } of payload.opportunities) {
+      const row = { ...o, run_label: o.run_label ?? payload.run_label ?? null, company_id: resolve({ company_hubspot_id, company_name: o.company_name }) };
+
+      let oppId: string | undefined;
+      if (mode === "refresh" && row.company_id) {
+        const { data: ex } = await admin.from("opportunities").select("id").eq("company_id", row.company_id).eq("asset_name", o.asset_name).maybeSingle();
+        if (ex?.id) {
+          oppId = ex.id as string;
+          const { error: ue } = await admin.from("opportunities").update(row).eq("id", oppId);
+          if (ue) throw new Error(`opportunities update: ${ue.message}`);
+          // Replace skill-owned children; preserve feedback + reviewer-added capabilities.
+          await admin.from("opportunity_score_components").delete().eq("opportunity_id", oppId);
+          await admin.from("opportunity_cohorts").delete().eq("opportunity_id", oppId);
+          await admin.from("opportunity_trials").delete().eq("opportunity_id", oppId);
+          await admin.from("opportunity_capabilities").delete().eq("opportunity_id", oppId).eq("source", "suggested");
+        }
+      }
+      if (!oppId) {
+        const { data: ins, error: ie } = await admin.from("opportunities").insert([row]).select("id");
+        if (ie) throw new Error(`opportunities insert: ${ie.message}`);
+        oppId = (ins ?? [])[0]?.id as string | undefined;
+      }
+      counts.opportunities++;
+      if (!oppId) continue;
+      (cohorts ?? []).forEach((c, j) => cohortRows.push({ opportunity_id: oppId, ...c, sort_order: j }));
+      (trials ?? []).forEach((t, j) => trialRows.push({ opportunity_id: oppId, ...t, sort_order: j }));
+      (score_components ?? []).forEach((s, j) => componentRows.push({ opportunity_id: oppId, ...s, sort_order: j }));
+      (capabilities ?? []).forEach((c) => capabilityRows.push({ opportunity_id: oppId, ...c, source: "suggested" }));
+    }
     if (cohortRows.length) {
       const { error: ce } = await admin.from("opportunity_cohorts").insert(cohortRows);
       if (ce) throw new Error(`opportunity_cohorts insert: ${ce.message}`);

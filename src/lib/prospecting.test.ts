@@ -23,7 +23,7 @@ describe("prospectingPayload schema", () => {
 });
 
 /** Fake admin: records calls, resolves company ids by name for the linking test. */
-function makeAdmin(companiesById: Record<string, string>) {
+function makeAdmin(companiesById: Record<string, string>, existingOppId?: string) {
   const calls: { table: string; op: string; rows: unknown }[] = [];
   function from(table: string) {
     let filterCol = "";
@@ -40,6 +40,12 @@ function makeAdmin(companiesById: Record<string, string>) {
       },
       select: () => builder,
       in: (col: string, vals: string[]) => { filterCol = col; filterVals = vals; return Promise.resolve({ data: resolveSelect(table, filterCol, filterVals, companiesById) }); },
+      // Refresh-mode support (chainable + thenable for update/delete awaits).
+      eq: () => builder,
+      maybeSingle: () => Promise.resolve({ data: table === "opportunities" && existingOppId ? { id: existingOppId } : null, error: null }),
+      update: (rows: unknown) => { calls.push({ table, op: "update", rows }); return builder; },
+      delete: () => { calls.push({ table, op: "delete", rows: null }); return builder; },
+      then: (resolve: (v: unknown) => void) => resolve({ error: null }),
     };
     return builder;
   }
@@ -79,5 +85,23 @@ describe("ingestProspecting linking", () => {
     const rows = cohortInsert!.rows as Record<string, unknown>[];
     expect(rows[0]).toMatchObject({ opportunity_id: "opportunities-0", ta_number: "TA1621", sort_order: 0 });
     expect(rows[1]).toMatchObject({ opportunity_id: "opportunities-0", ta_number: "TA2660", sort_order: 1 });
+  });
+
+  it("refresh mode updates an existing opportunity (preserving feedback) instead of duplicating", async () => {
+    const { admin, calls } = makeAdmin({ "Regeneron Pharmaceuticals": "co-1" }, "opp-existing");
+    const counts = await ingestProspecting(admin, {
+      mode: "refresh",
+      opportunities: [{
+        company_name: "Regeneron Pharmaceuticals", asset_name: "REGN10597", fit_score: 80,
+        score_components: [{ component: "Target ↔ marker overlap", weight_max: 40, points: 30 }],
+      }],
+    });
+    expect(counts.opportunities).toBe(1);
+    const ops = calls.filter((c) => c.table === "opportunities");
+    expect(ops.some((c) => c.op === "update")).toBe(true);
+    expect(ops.some((c) => c.op === "insert")).toBe(false);
+    // skill-owned children cleared before re-insert; feedback table never touched
+    expect(calls.some((c) => c.table === "opportunity_score_components" && c.op === "delete")).toBe(true);
+    expect(calls.some((c) => c.table === "opportunity_feedback")).toBe(false);
   });
 });
