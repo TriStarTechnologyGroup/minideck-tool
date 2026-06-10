@@ -2,8 +2,33 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { tierChip } from "@/lib/prospecting-ui";
+import { tierChip, tierRank } from "@/lib/prospecting-ui";
 import ConvertOpportunity from "./convert-opportunity";
+
+// Tier-colored accent rail (left edge of each opportunity card).
+function railVar(tier: string | null): string {
+  const r = tierRank(tier);
+  return r === 1 ? "var(--color-primary)" : r === 2 ? "var(--color-link)" : "var(--color-line-strong)";
+}
+// "TA1621 [PD-L1] | TA2660 [PD-L1]" → chips; a summary sentence → a note instead.
+function parseTmas(s: string | null): { chips: { code: string; marker?: string }[]; note?: string } {
+  if (!s) return { chips: [] };
+  const parts = s.split("|").map((x) => x.trim()).filter(Boolean);
+  if (parts.length <= 1 && !s.includes("[")) return { chips: [], note: s };
+  const chips = parts.map((p) => {
+    const m = p.match(/^(\S+)\s*\[([^\]]+)\]/);
+    return m ? { code: m[1], marker: m[2] } : { code: p };
+  });
+  return { chips };
+}
+// "R-05 Pre/Post-IO cohort, L-04 RNA-Seq" → [{code:"R-05", label:"Pre/Post-IO cohort"}, …].
+function parseCaps(s: string | null): { code?: string; label: string }[] {
+  if (!s) return [];
+  return s.split(",").map((x) => x.trim()).filter(Boolean).map((p) => {
+    const m = p.match(/^([A-Za-z]-\d+)\s+(.*)$/);
+    return m ? { code: m[1], label: m[2] } : { label: p };
+  });
+}
 
 export const dynamic = "force-dynamic";
 
@@ -67,36 +92,92 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
           <p className="card px-6 py-8 text-center text-sm text-ink-muted">No scored opportunities for this company yet.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {opps.map((o) => (
-              <div key={o.id} className="card p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`chip ${tierChip(o.fit_tier)}`}>{o.fit_tier ?? "—"}</span>
-                  <span className="font-medium text-ink">{o.asset_name}</span>
-                  <span className="text-ink-muted">· {o.target ?? "—"} · {o.modality ?? "—"} · {o.phase ?? "—"}</span>
-                  {o.fit_score != null && <span className="ml-auto text-sm text-ink-muted">Fit {o.fit_score}</span>}
+            {opps.map((o) => {
+              const tmas = parseTmas(o.matched_tma_skus);
+              const caps = parseCaps(o.suggested_capabilities);
+              const meta: [string, string | null][] = [["target", o.target], ["modality", o.modality], ["phase", o.phase]];
+              return (
+                <div key={o.id} className="card flex overflow-hidden p-0">
+                  <div className="w-1 shrink-0" style={{ background: railVar(o.fit_tier) }} aria-hidden />
+                  <div className="min-w-0 flex-1 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-display text-base font-medium text-ink">{o.asset_name}</span>
+                          {o.fit_tier && <span className={`chip ${tierChip(o.fit_tier)}`}>{o.fit_tier}</span>}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {meta.filter(([, v]) => v).map(([label, v]) => (
+                            <span key={label} className="inline-flex items-center gap-1 rounded-sm border border-line px-2 py-0.5 text-xs text-ink">
+                              <span className="text-ink-muted">{label}</span> {v}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      {o.fit_score != null && (
+                        <div className="shrink-0 text-right">
+                          <div className="text-2xl font-medium leading-none text-ink">{o.fit_score}</div>
+                          <div className="text-[0.7rem] text-ink-muted">fit score</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {o.rationale && <p className="mt-3 text-sm leading-relaxed text-ink-muted">{o.rationale}</p>}
+
+                    {(tmas.chips.length > 0 || tmas.note) && (
+                      <div className="mt-3">
+                        <div className="mb-1.5 text-[0.7rem] uppercase tracking-wide text-ink-muted">
+                          Matched TMAs{tmas.chips.length > 0 && <span className="ml-1 normal-case text-nav">{tmas.chips.length}</span>}
+                        </div>
+                        {tmas.chips.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {tmas.chips.slice(0, 10).map((t, i) => (
+                              <span key={i} className="inline-flex items-center gap-1.5 rounded-sm bg-surface-subtle px-2 py-0.5 text-xs">
+                                <span className="font-mono text-ink">{t.code}</span>
+                                {t.marker && <span className="text-[0.7rem] text-nav">{t.marker}</span>}
+                              </span>
+                            ))}
+                            {tmas.chips.length > 10 && <span className="rounded-sm bg-surface-subtle px-2 py-0.5 text-xs text-ink-muted">+{tmas.chips.length - 10} more</span>}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-ink-muted">{tmas.note}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {caps.length > 0 && (
+                      <div className="mt-3">
+                        <div className="mb-1.5 text-[0.7rem] uppercase tracking-wide text-ink-muted">Suggested capabilities</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {caps.map((cap, i) => (
+                            <span key={i} className="inline-flex items-center gap-1.5 rounded-sm border border-line px-2 py-0.5 text-xs text-ink">
+                              {cap.code && <span className="font-mono text-[0.7rem] text-nav">{cap.code}</span>}
+                              {cap.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-4">
+                      <ConvertOpportunity
+                        companyId={c.id}
+                        campaigns={campaigns}
+                        decks={decks}
+                        defaults={{
+                          research: o.rationale ?? "",
+                          angle: [
+                            o.matched_tma_skus ? `Matched TMAs: ${o.matched_tma_skus}` : "",
+                            o.suggested_capabilities ? `Suggested capabilities: ${o.suggested_capabilities}` : "",
+                            `Opportunity: ${o.asset_name}${o.target ? ` (${o.target})` : ""}${o.phase ? ` · ${o.phase}` : ""}`,
+                          ].filter(Boolean).join("\n"),
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                {o.rationale && <p className="mt-2 text-sm text-ink-muted">{o.rationale}</p>}
-                <div className="mt-2 grid gap-x-6 gap-y-1 text-xs text-ink-muted sm:grid-cols-2">
-                  <div><span className="font-medium text-ink">Matched TMAs:</span> {o.matched_tma_skus ?? "—"}</div>
-                  <div><span className="font-medium text-ink">Suggested capabilities:</span> {o.suggested_capabilities ?? "—"}</div>
-                </div>
-                <div className="mt-3">
-                  <ConvertOpportunity
-                    companyId={c.id}
-                    campaigns={campaigns}
-                    decks={decks}
-                    defaults={{
-                      research: o.rationale ?? "",
-                      angle: [
-                        o.matched_tma_skus ? `Matched TMAs: ${o.matched_tma_skus}` : "",
-                        o.suggested_capabilities ? `Suggested capabilities: ${o.suggested_capabilities}` : "",
-                        `Opportunity: ${o.asset_name}${o.target ? ` (${o.target})` : ""}${o.phase ? ` · ${o.phase}` : ""}`,
-                      ].filter(Boolean).join("\n"),
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
