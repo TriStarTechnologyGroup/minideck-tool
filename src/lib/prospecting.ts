@@ -52,6 +52,15 @@ const drugProgram = z.object({
   notes: z.string().optional(),
 });
 
+const cohort = z.object({
+  ta_number: z.string().optional(),
+  cohort: z.string().optional(),
+  markers: z.string().optional(),
+  donors: z.number().int().optional(),
+  category: z.string().optional(),
+  custom_stain: z.boolean().optional(),
+});
+
 const opportunity = z.object({
   run_label: z.string().optional(),
   company_hubspot_id: z.string().optional(),
@@ -68,6 +77,7 @@ const opportunity = z.object({
   suggested_capabilities: z.string().optional(),
   rationale: z.string().optional(),
   notes: z.string().optional(),
+  cohorts: z.array(cohort).optional(), // the §5 cohort table for this opportunity
 });
 
 const tma = z.object({
@@ -103,12 +113,12 @@ export const prospectingPayload = z.object({
 });
 
 export type ProspectingPayload = z.infer<typeof prospectingPayload>;
-export type IngestCounts = { companies: number; drug_programs: number; opportunities: number; tma_catalog: number; capabilities: number };
+export type IngestCounts = { companies: number; drug_programs: number; opportunities: number; opportunity_cohorts: number; tma_catalog: number; capabilities: number };
 
 /** Upsert a prospecting run's output. Idempotent on companies (hubspot_id) and
  *  capabilities (capability_id); programs/opportunities are appended and linked. */
 export async function ingestProspecting(admin: Admin, payload: ProspectingPayload): Promise<IngestCounts> {
-  const counts: IngestCounts = { companies: 0, drug_programs: 0, opportunities: 0, tma_catalog: 0, capabilities: 0 };
+  const counts: IngestCounts = { companies: 0, drug_programs: 0, opportunities: 0, opportunity_cohorts: 0, tma_catalog: 0, capabilities: 0 };
 
   if (payload.companies?.length) {
     const withHs = payload.companies.filter((c) => c.hubspot_id);
@@ -149,14 +159,26 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
   }
 
   if (payload.opportunities?.length) {
-    const rows = payload.opportunities.map(({ company_hubspot_id, ...o }) => ({
-      ...o,
-      run_label: o.run_label ?? payload.run_label ?? null,
-      company_id: resolve({ company_hubspot_id, company_name: o.company_name }),
+    // Split each opportunity into its row (cohorts/hint stripped) and its cohort list.
+    const prepared = payload.opportunities.map(({ company_hubspot_id, cohorts, ...o }) => ({
+      row: { ...o, run_label: o.run_label ?? payload.run_label ?? null, company_id: resolve({ company_hubspot_id, company_name: o.company_name }) },
+      cohorts: cohorts ?? [],
     }));
-    const { error } = await admin.from("opportunities").insert(rows);
+    // Insert returning ids in order so each opportunity's cohorts can be linked.
+    const { data: inserted, error } = await admin.from("opportunities").insert(prepared.map((p) => p.row)).select("id");
     if (error) throw new Error(`opportunities insert: ${error.message}`);
-    counts.opportunities = rows.length;
+    counts.opportunities = prepared.length;
+
+    const cohortRows: Record<string, unknown>[] = [];
+    prepared.forEach((p, i) => {
+      const oppId = (inserted ?? [])[i]?.id;
+      if (oppId) p.cohorts.forEach((c, j) => cohortRows.push({ opportunity_id: oppId, ...c, sort_order: j }));
+    });
+    if (cohortRows.length) {
+      const { error: ce } = await admin.from("opportunity_cohorts").insert(cohortRows);
+      if (ce) throw new Error(`opportunity_cohorts insert: ${ce.message}`);
+      counts.opportunity_cohorts = cohortRows.length;
+    }
   }
 
   if (payload.capabilities?.length) {
