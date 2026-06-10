@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { tierChip, tierRank, isProprietary } from "@/lib/prospecting-ui";
+import { tierRank, isProprietary } from "@/lib/prospecting-ui";
+import OpportunitiesTable from "./opportunities-table";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Prospecting — Minideck" };
@@ -58,49 +58,7 @@ export default async function ProspectingPage() {
           No opportunities yet. Run the prospecting skill — it logs results here via the ingestion endpoint.
         </p>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">#</th>
-                <th className="px-4 py-2.5 font-medium">Company</th>
-                <th className="px-4 py-2.5 font-medium">Asset</th>
-                <th className="px-4 py-2.5 font-medium">Target</th>
-                <th className="px-4 py-2.5 font-medium">Modality</th>
-                <th className="px-4 py-2.5 font-medium">Phase</th>
-                <th className="px-4 py-2.5 font-medium">Tier</th>
-                <th className="px-4 py-2.5 font-medium">Fit</th>
-                <th className="px-4 py-2.5 font-medium">Matched TMAs</th>
-                <th className="px-4 py-2.5 font-medium">Suggested capabilities</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {ranked.map((o, i) => (
-                <tr key={o.id} className="align-top transition-colors hover:bg-surface-subtle">
-                  <td className="px-4 py-2.5 text-ink-muted">{i + 1}</td>
-                  <td className="px-4 py-2.5">
-                    {o.company_id ? (
-                      <Link href={`/prospecting/${o.company_id}`} className="font-medium text-ink hover:text-link">
-                        {o.company_name} →
-                      </Link>
-                    ) : (
-                      <span className="font-medium text-ink">{o.company_name}</span>
-                    )}
-                    {isProprietary(o.proprietary) && <span className="ml-2 chip bg-surface-muted text-nav text-[0.6rem]">proprietary</span>}
-                  </td>
-                  <td className="px-4 py-2.5"><Link href={`/prospecting/opportunity/${o.id}`} className="text-ink hover:text-link">{o.asset_name}</Link></td>
-                  <td className="px-4 py-2.5 text-ink-muted">{o.target ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-ink-muted">{o.modality ?? "—"}</td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-ink-muted">{o.phase ?? "—"}</td>
-                  <td className="px-4 py-2.5"><span className={`chip ${tierChip(o.fit_tier)}`}>{o.fit_tier ?? "—"}</span></td>
-                  <td className="px-4 py-2.5 text-ink">{o.fit_score ?? "—"}</td>
-                  <td className="max-w-[16rem] truncate px-4 py-2.5 text-xs text-ink-muted" title={o.matched_tma_skus ?? ""}>{o.matched_tma_skus ?? "—"}</td>
-                  <td className="max-w-[14rem] truncate px-4 py-2.5 text-xs text-ink-muted" title={o.suggested_capabilities ?? ""}>{o.suggested_capabilities ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <OpportunitiesTable opps={ranked} />
       )}
       <p className="text-xs text-ink-muted/70">
         Research + scoring by the Claude prospecting skill; logged to the app. Click a company for its full pipeline + opportunities.
