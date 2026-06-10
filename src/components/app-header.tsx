@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getProfile } from "@/lib/auth";
+import MobileMenu from "./mobile-menu";
 
 export default async function AppHeader() {
   const profile = await getProfile();
@@ -19,7 +20,7 @@ export default async function AppHeader() {
               className="h-7 w-auto [filter:brightness(0)_invert(1)]"
             />
           </Link>
-          <nav className="hidden items-center gap-5 text-sm sm:flex">
+          <nav className="hidden items-center gap-5 text-sm lg:flex">
             <Link href="/decks" className="font-medium text-white/90 transition-colors hover:text-primary">
               Decks
             </Link>
@@ -52,18 +53,19 @@ export default async function AppHeader() {
         </div>
 
         <div className="flex items-center gap-3 text-sm">
-          <span className="hidden text-white/60 sm:inline">{profile.email}</span>
+          <span className="hidden text-white/60 xl:inline">{profile.email}</span>
           <span className={`chip ${isAdmin ? "bg-primary/20 text-primary-light" : "bg-white/10 text-white/70"}`}>
             {profile.role}
           </span>
           <form action="/auth/signout" method="post">
             <button
               type="submit"
-              className="rounded-none border border-white/25 px-2.5 py-1 text-xs font-medium text-white/90 transition-colors hover:bg-white/10"
+              className="whitespace-nowrap rounded-none border border-white/25 px-2.5 py-1 text-xs font-medium text-white/90 transition-colors hover:bg-white/10"
             >
               Sign out
             </button>
           </form>
+          <MobileMenu isAdmin={isAdmin} email={profile.email} />
         </div>
       </div>
     </header>
