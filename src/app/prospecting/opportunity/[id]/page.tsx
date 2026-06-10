@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { tierChip, parseCaps } from "@/lib/prospecting-ui";
 import ConvertOpportunity from "../../[id]/convert-opportunity";
+import ScoreBreakdown, { type ScoreComponent, type Feedback } from "./score-breakdown";
+import CapabilitiesPanel, { type OppCapability } from "./capabilities-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,15 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const trials = (trialRows ?? []) as Trial[];
   const campaigns = (campaignList ?? []) as { id: string; name: string }[];
   const decks = (deckList ?? []) as { id: string; name: string }[];
+
+  const [{ data: componentRows }, { data: capabilityRows }, { data: feedbackRow }] = await Promise.all([
+    supabase.from("opportunity_score_components").select("id, component, weight_max, points, note").eq("opportunity_id", id).order("sort_order"),
+    supabase.from("opportunity_capabilities").select("id, capability_id, label, source, confirmed").eq("opportunity_id", id).order("source").order("created_at"),
+    supabase.from("opportunity_feedback").select("reviewer_score, component_points, verdict, notes").eq("opportunity_id", id).maybeSingle(),
+  ]);
+  const scoreComponents = (componentRows ?? []) as ScoreComponent[];
+  const oppCapabilities = (capabilityRows ?? []) as OppCapability[];
+  const feedback = (feedbackRow ?? null) as Feedback;
 
   // Resolve cohort TA#s to catalog ids so each links to its full TMA detail.
   const taNumbers = [...new Set(cohorts.map((c) => c.ta_number).filter(Boolean) as string[])];
@@ -94,19 +105,29 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         </section>
       )}
 
-      {caps.length > 0 && (
-        <section>
-          <h2 className="mb-2 font-display text-lg font-medium text-ink">Recommended offerings</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {caps.map((cap, i) => (
-              <span key={i} className="inline-flex items-center gap-1.5 rounded-sm border border-line px-2.5 py-1 text-sm text-ink">
-                {cap.code && <span className="font-mono text-xs text-nav">{cap.code}</span>}
-                {cap.label}
-              </span>
-            ))}
+      <section>
+        <h2 className="mb-2 font-display text-lg font-medium text-ink">Scoring breakdown</h2>
+        <ScoreBreakdown opportunityId={o.id} skillScore={o.fit_score} components={scoreComponents} feedback={feedback} />
+      </section>
+
+      <section>
+        <h2 className="mb-2 font-display text-lg font-medium text-ink">Capabilities &amp; products</h2>
+        {oppCapabilities.length > 0 || caps.length === 0 ? (
+          <CapabilitiesPanel opportunityId={o.id} capabilities={oppCapabilities} />
+        ) : (
+          <div className="card p-4">
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {caps.map((cap, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 rounded-sm border border-line px-2.5 py-1 text-sm text-ink">
+                  {cap.code && <span className="font-mono text-xs text-nav">{cap.code}</span>}
+                  {cap.label}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-ink-muted/70">From the run summary. Re-run the skill to make these individually confirmable.</p>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <section>
         <h2 className="mb-2 font-display text-lg font-medium text-ink">
