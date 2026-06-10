@@ -163,9 +163,17 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
       const { error } = await admin.from("companies").upsert(withHs, { onConflict: "hubspot_id" });
       if (error) throw new Error(`companies upsert: ${error.message}`);
     }
-    if (without.length) {
-      const { error } = await admin.from("companies").insert(without);
-      if (error) throw new Error(`companies insert: ${error.message}`);
+    // Without a hubspot_id, dedupe by name: update an existing same-named company rather than
+    // inserting a duplicate (this is what created dup company rows on rescore).
+    for (const c of without) {
+      const { data: ex } = await admin.from("companies").select("id").eq("name", c.name).limit(1);
+      if (ex && ex.length) {
+        const { error } = await admin.from("companies").update(c).eq("id", ex[0].id);
+        if (error) throw new Error(`companies update: ${error.message}`);
+      } else {
+        const { error } = await admin.from("companies").insert(c);
+        if (error) throw new Error(`companies insert: ${error.message}`);
+      }
     }
     counts.companies = payload.companies.length;
   }
@@ -181,8 +189,12 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
     for (const c of data ?? []) if (c.hubspot_id) byHs.set(c.hubspot_id as string, c.id as string);
   }
   if (names.length) {
-    const { data } = await admin.from("companies").select("id, name").in("name", names);
-    for (const c of data ?? []) byName.set(c.name as string, c.id as string);
+    const { data } = await admin.from("companies").select("id, name, hubspot_id").in("name", names);
+    // If a name has duplicate rows, prefer the one with a hubspot_id (the canonical record).
+    for (const c of data ?? []) {
+      const existing = byName.get(c.name as string);
+      if (!existing || c.hubspot_id) byName.set(c.name as string, c.id as string);
+    }
   }
   const resolve = (r: { company_hubspot_id?: string; company_name?: string }) =>
     (r.company_hubspot_id && byHs.get(r.company_hubspot_id)) || (r.company_name && byName.get(r.company_name)) || null;

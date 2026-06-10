@@ -23,11 +23,13 @@ describe("prospectingPayload schema", () => {
 });
 
 /** Fake admin: records calls, resolves company ids by name for the linking test. */
-function makeAdmin(companiesById: Record<string, string>, existingOppId?: string) {
+function makeAdmin(companiesById: Record<string, string>, existingOppId?: string, existingCompanyNames: string[] = []) {
   const calls: { table: string; op: string; rows: unknown }[] = [];
   function from(table: string) {
     let filterCol = "";
     let filterVals: string[] = [];
+    let lastEqCol = "";
+    let lastEqVal = "";
     const builder: Record<string, unknown> = {
       upsert: (rows: unknown) => { calls.push({ table, op: "upsert", rows }); return Promise.resolve({ error: null }); },
       insert: (rows: unknown) => {
@@ -40,8 +42,9 @@ function makeAdmin(companiesById: Record<string, string>, existingOppId?: string
       },
       select: () => builder,
       in: (col: string, vals: string[]) => { filterCol = col; filterVals = vals; return Promise.resolve({ data: resolveSelect(table, filterCol, filterVals, companiesById) }); },
-      // Refresh-mode support (chainable + thenable for update/delete awaits).
-      eq: () => builder,
+      // Refresh-mode + name-dedup support (chainable + thenable for update/delete awaits).
+      eq: (col: string, val: string) => { lastEqCol = col; lastEqVal = val; return builder; },
+      limit: () => Promise.resolve({ data: table === "companies" && lastEqCol === "name" && existingCompanyNames.includes(lastEqVal) ? [{ id: "existing-co" }] : [], error: null }),
       maybeSingle: () => Promise.resolve({ data: table === "opportunities" && existingOppId ? { id: existingOppId } : null, error: null }),
       update: (rows: unknown) => { calls.push({ table, op: "update", rows }); return builder; },
       delete: () => { calls.push({ table, op: "delete", rows: null }); return builder; },
@@ -85,6 +88,14 @@ describe("ingestProspecting linking", () => {
     const rows = cohortInsert!.rows as Record<string, unknown>[];
     expect(rows[0]).toMatchObject({ opportunity_id: "opportunities-0", ta_number: "TA1621", sort_order: 0 });
     expect(rows[1]).toMatchObject({ opportunity_id: "opportunities-0", ta_number: "TA2660", sort_order: 1 });
+  });
+
+  it("a company without hubspot_id updates an existing same-named company instead of duplicating", async () => {
+    const { admin, calls } = makeAdmin({}, undefined, ["Regeneron Pharmaceuticals"]);
+    await ingestProspecting(admin, { companies: [{ name: "Regeneron Pharmaceuticals", relevant: true }] });
+    const coCalls = calls.filter((c) => c.table === "companies");
+    expect(coCalls.some((c) => c.op === "update")).toBe(true);
+    expect(coCalls.some((c) => c.op === "insert")).toBe(false);
   });
 
   it("refresh mode updates an existing opportunity (preserving feedback) instead of duplicating", async () => {
