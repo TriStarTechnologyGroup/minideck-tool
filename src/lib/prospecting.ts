@@ -79,6 +79,18 @@ const trial = z.object({
   url: z.string().optional(),
 });
 
+const scoreComponent = z.object({
+  component: z.string(),
+  weight_max: z.number().int(),
+  points: z.number().int(),
+  note: z.string().optional(),
+});
+
+const oppCapability = z.object({
+  capability_id: z.string().optional(),
+  label: z.string(),
+});
+
 const opportunity = z.object({
   run_label: z.string().optional(),
   company_hubspot_id: z.string().optional(),
@@ -97,6 +109,8 @@ const opportunity = z.object({
   notes: z.string().optional(),
   cohorts: z.array(cohort).optional(), // the §5 cohort table for this opportunity
   trials: z.array(trial).optional(), // ClinicalTrials.gov evidence for this opportunity
+  score_components: z.array(scoreComponent).optional(), // per-parameter scoring breakdown
+  capabilities: z.array(oppCapability).optional(), // structured suggested capabilities
 });
 
 const tma = z.object({
@@ -132,12 +146,12 @@ export const prospectingPayload = z.object({
 });
 
 export type ProspectingPayload = z.infer<typeof prospectingPayload>;
-export type IngestCounts = { companies: number; drug_programs: number; opportunities: number; opportunity_cohorts: number; opportunity_trials: number; tma_catalog: number; capabilities: number };
+export type IngestCounts = { companies: number; drug_programs: number; opportunities: number; opportunity_cohorts: number; opportunity_trials: number; opportunity_score_components: number; opportunity_capabilities: number; tma_catalog: number; capabilities: number };
 
 /** Upsert a prospecting run's output. Idempotent on companies (hubspot_id) and
  *  capabilities (capability_id); programs/opportunities are appended and linked. */
 export async function ingestProspecting(admin: Admin, payload: ProspectingPayload): Promise<IngestCounts> {
-  const counts: IngestCounts = { companies: 0, drug_programs: 0, opportunities: 0, opportunity_cohorts: 0, opportunity_trials: 0, tma_catalog: 0, capabilities: 0 };
+  const counts: IngestCounts = { companies: 0, drug_programs: 0, opportunities: 0, opportunity_cohorts: 0, opportunity_trials: 0, opportunity_score_components: 0, opportunity_capabilities: 0, tma_catalog: 0, capabilities: 0 };
 
   if (payload.companies?.length) {
     const withHs = payload.companies.filter((c) => c.hubspot_id);
@@ -179,10 +193,12 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
 
   if (payload.opportunities?.length) {
     // Split each opportunity into its row (cohorts/hint stripped) and its cohort list.
-    const prepared = payload.opportunities.map(({ company_hubspot_id, cohorts, trials, ...o }) => ({
+    const prepared = payload.opportunities.map(({ company_hubspot_id, cohorts, trials, score_components, capabilities, ...o }) => ({
       row: { ...o, run_label: o.run_label ?? payload.run_label ?? null, company_id: resolve({ company_hubspot_id, company_name: o.company_name }) },
       cohorts: cohorts ?? [],
       trials: trials ?? [],
+      scoreComponents: score_components ?? [],
+      capabilities: capabilities ?? [],
     }));
     // Insert returning ids in order so each opportunity's cohorts/trials can be linked.
     const { data: inserted, error } = await admin.from("opportunities").insert(prepared.map((p) => p.row)).select("id");
@@ -191,11 +207,15 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
 
     const cohortRows: Record<string, unknown>[] = [];
     const trialRows: Record<string, unknown>[] = [];
+    const componentRows: Record<string, unknown>[] = [];
+    const capabilityRows: Record<string, unknown>[] = [];
     prepared.forEach((p, i) => {
       const oppId = (inserted ?? [])[i]?.id;
       if (!oppId) return;
       p.cohorts.forEach((c, j) => cohortRows.push({ opportunity_id: oppId, ...c, sort_order: j }));
       p.trials.forEach((t, j) => trialRows.push({ opportunity_id: oppId, ...t, sort_order: j }));
+      p.scoreComponents.forEach((s, j) => componentRows.push({ opportunity_id: oppId, ...s, sort_order: j }));
+      p.capabilities.forEach((c) => capabilityRows.push({ opportunity_id: oppId, ...c, source: "suggested" }));
     });
     if (cohortRows.length) {
       const { error: ce } = await admin.from("opportunity_cohorts").insert(cohortRows);
@@ -206,6 +226,16 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
       const { error: te } = await admin.from("opportunity_trials").insert(trialRows);
       if (te) throw new Error(`opportunity_trials insert: ${te.message}`);
       counts.opportunity_trials = trialRows.length;
+    }
+    if (componentRows.length) {
+      const { error: se } = await admin.from("opportunity_score_components").insert(componentRows);
+      if (se) throw new Error(`opportunity_score_components insert: ${se.message}`);
+      counts.opportunity_score_components = componentRows.length;
+    }
+    if (capabilityRows.length) {
+      const { error: cae } = await admin.from("opportunity_capabilities").insert(capabilityRows);
+      if (cae) throw new Error(`opportunity_capabilities insert: ${cae.message}`);
+      counts.opportunity_capabilities = capabilityRows.length;
     }
   }
 
