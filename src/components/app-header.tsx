@@ -40,6 +40,9 @@ export default async function AppHeader() {
                 <Link href="/admin/audit" className="font-medium text-white/90 transition-colors hover:text-primary">
                   Audit
                 </Link>
+                <Link href="/admin/scoring" className="font-medium text-white/90 transition-colors hover:text-primary">
+                  Scoring
+                </Link>
               </>
             )}
           </nav>
