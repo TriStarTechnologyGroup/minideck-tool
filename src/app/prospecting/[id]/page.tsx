@@ -2,33 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { tierChip, tierRank } from "@/lib/prospecting-ui";
+import { tierChip, railVar, parseTmas, parseCaps } from "@/lib/prospecting-ui";
 import ConvertOpportunity from "./convert-opportunity";
-
-// Tier-colored accent rail (left edge of each opportunity card).
-function railVar(tier: string | null): string {
-  const r = tierRank(tier);
-  return r === 1 ? "var(--color-primary)" : r === 2 ? "var(--color-link)" : "var(--color-line-strong)";
-}
-// "TA1621 [PD-L1] | TA2660 [PD-L1]" → chips; a summary sentence → a note instead.
-function parseTmas(s: string | null): { chips: { code: string; marker?: string }[]; note?: string } {
-  if (!s) return { chips: [] };
-  const parts = s.split("|").map((x) => x.trim()).filter(Boolean);
-  if (parts.length <= 1 && !s.includes("[")) return { chips: [], note: s };
-  const chips = parts.map((p) => {
-    const m = p.match(/^(\S+)\s*\[([^\]]+)\]/);
-    return m ? { code: m[1], marker: m[2] } : { code: p };
-  });
-  return { chips };
-}
-// "R-05 Pre/Post-IO cohort, L-04 RNA-Seq" → [{code:"R-05", label:"Pre/Post-IO cohort"}, …].
-function parseCaps(s: string | null): { code?: string; label: string }[] {
-  if (!s) return [];
-  return s.split(",").map((x) => x.trim()).filter(Boolean).map((p) => {
-    const m = p.match(/^([A-Za-z]-\d+)\s+(.*)$/);
-    return m ? { code: m[1], label: m[2] } : { label: p };
-  });
-}
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +78,7 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
                     <div className="flex items-start gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-display text-base font-medium text-ink">{o.asset_name}</span>
+                          <Link href={`/prospecting/opportunity/${o.id}`} className="font-display text-base font-medium text-ink hover:text-link">{o.asset_name} →</Link>
                           {o.fit_tier && <span className={`chip ${tierChip(o.fit_tier)}`}>{o.fit_tier}</span>}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
