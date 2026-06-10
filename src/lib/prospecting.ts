@@ -61,6 +61,24 @@ const cohort = z.object({
   custom_stain: z.boolean().optional(),
 });
 
+const trial = z.object({
+  nct_id: z.string().optional(),
+  title: z.string().optional(),
+  status: z.string().optional(),
+  phase: z.string().optional(),
+  enrollment: z.number().int().optional(),
+  start_date: z.string().optional(),
+  primary_completion_date: z.string().optional(),
+  conditions: z.string().optional(),
+  interventions: z.string().optional(),
+  primary_endpoints: z.string().optional(),
+  tissue_requirements: z.string().optional(),
+  selection_biomarkers: z.string().optional(),
+  relevance_flags: z.string().optional(),
+  has_results: z.boolean().optional(),
+  url: z.string().optional(),
+});
+
 const opportunity = z.object({
   run_label: z.string().optional(),
   company_hubspot_id: z.string().optional(),
@@ -78,6 +96,7 @@ const opportunity = z.object({
   rationale: z.string().optional(),
   notes: z.string().optional(),
   cohorts: z.array(cohort).optional(), // the §5 cohort table for this opportunity
+  trials: z.array(trial).optional(), // ClinicalTrials.gov evidence for this opportunity
 });
 
 const tma = z.object({
@@ -113,12 +132,12 @@ export const prospectingPayload = z.object({
 });
 
 export type ProspectingPayload = z.infer<typeof prospectingPayload>;
-export type IngestCounts = { companies: number; drug_programs: number; opportunities: number; opportunity_cohorts: number; tma_catalog: number; capabilities: number };
+export type IngestCounts = { companies: number; drug_programs: number; opportunities: number; opportunity_cohorts: number; opportunity_trials: number; tma_catalog: number; capabilities: number };
 
 /** Upsert a prospecting run's output. Idempotent on companies (hubspot_id) and
  *  capabilities (capability_id); programs/opportunities are appended and linked. */
 export async function ingestProspecting(admin: Admin, payload: ProspectingPayload): Promise<IngestCounts> {
-  const counts: IngestCounts = { companies: 0, drug_programs: 0, opportunities: 0, opportunity_cohorts: 0, tma_catalog: 0, capabilities: 0 };
+  const counts: IngestCounts = { companies: 0, drug_programs: 0, opportunities: 0, opportunity_cohorts: 0, opportunity_trials: 0, tma_catalog: 0, capabilities: 0 };
 
   if (payload.companies?.length) {
     const withHs = payload.companies.filter((c) => c.hubspot_id);
@@ -160,24 +179,33 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
 
   if (payload.opportunities?.length) {
     // Split each opportunity into its row (cohorts/hint stripped) and its cohort list.
-    const prepared = payload.opportunities.map(({ company_hubspot_id, cohorts, ...o }) => ({
+    const prepared = payload.opportunities.map(({ company_hubspot_id, cohorts, trials, ...o }) => ({
       row: { ...o, run_label: o.run_label ?? payload.run_label ?? null, company_id: resolve({ company_hubspot_id, company_name: o.company_name }) },
       cohorts: cohorts ?? [],
+      trials: trials ?? [],
     }));
-    // Insert returning ids in order so each opportunity's cohorts can be linked.
+    // Insert returning ids in order so each opportunity's cohorts/trials can be linked.
     const { data: inserted, error } = await admin.from("opportunities").insert(prepared.map((p) => p.row)).select("id");
     if (error) throw new Error(`opportunities insert: ${error.message}`);
     counts.opportunities = prepared.length;
 
     const cohortRows: Record<string, unknown>[] = [];
+    const trialRows: Record<string, unknown>[] = [];
     prepared.forEach((p, i) => {
       const oppId = (inserted ?? [])[i]?.id;
-      if (oppId) p.cohorts.forEach((c, j) => cohortRows.push({ opportunity_id: oppId, ...c, sort_order: j }));
+      if (!oppId) return;
+      p.cohorts.forEach((c, j) => cohortRows.push({ opportunity_id: oppId, ...c, sort_order: j }));
+      p.trials.forEach((t, j) => trialRows.push({ opportunity_id: oppId, ...t, sort_order: j }));
     });
     if (cohortRows.length) {
       const { error: ce } = await admin.from("opportunity_cohorts").insert(cohortRows);
       if (ce) throw new Error(`opportunity_cohorts insert: ${ce.message}`);
       counts.opportunity_cohorts = cohortRows.length;
+    }
+    if (trialRows.length) {
+      const { error: te } = await admin.from("opportunity_trials").insert(trialRows);
+      if (te) throw new Error(`opportunity_trials insert: ${te.message}`);
+      counts.opportunity_trials = trialRows.length;
     }
   }
 
