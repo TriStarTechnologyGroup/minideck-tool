@@ -10,7 +10,7 @@ export default async function CatalogPage() {
   const supabase = await createClient();
   const [{ data: caps }, { data: tmas }] = await Promise.all([
     supabase.from("capabilities").select("id, capability_id, name, category, description").order("capability_id"),
-    supabase.from("tma_catalog").select("id, sku, ta_number, name, short_description, description, categories, primary_categories, donor_samples_each, approx_cores, approx_donors, core_size, markers, suitable_for").order("ta_number"),
+    supabase.from("tma_catalog").select("id, sku, ta_number, name, short_description, description, categories, primary_categories, product_cat, cancer, donor_samples_each, approx_cores, approx_donors, number_of_cores, number_of_donors, core_size, markers, suitable_for, suitable_for_codex, follow_up_data, molecular_data, images, data_sheet, gcp_dzi_file").order("sku"),
   ]);
 
   return (

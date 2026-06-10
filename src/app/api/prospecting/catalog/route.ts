@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient();
   const [{ data: tma }, { data: capabilities }] = await Promise.all([
-    admin.from("tma_catalog").select("ta_number, name, short_description, categories, donor_samples_each, approx_cores, approx_donors, core_size, markers, primary_categories, suitable_for").order("ta_number"),
+    admin.from("tma_catalog").select("sku, ta_number, name, short_description, categories, primary_categories, product_cat, cancer, donor_samples_each, approx_cores, approx_donors, number_of_cores, number_of_donors, core_size, markers, suitable_for, suitable_for_codex, follow_up_data, molecular_data").order("sku"),
     admin.from("capabilities").select("capability_id, name, category, description").order("capability_id"),
   ]);
 
