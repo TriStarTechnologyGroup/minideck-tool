@@ -88,7 +88,7 @@ export default async function ProspectingPage() {
                     )}
                     {isProprietary(o.proprietary) && <span className="ml-2 chip bg-surface-muted text-nav text-[0.6rem]">proprietary</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-ink">{o.asset_name}</td>
+                  <td className="px-4 py-2.5"><Link href={`/prospecting/opportunity/${o.id}`} className="text-ink hover:text-link">{o.asset_name}</Link></td>
                   <td className="px-4 py-2.5 text-ink-muted">{o.target ?? "—"}</td>
                   <td className="px-4 py-2.5 text-ink-muted">{o.modality ?? "—"}</td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-ink-muted">{o.phase ?? "—"}</td>
