@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { tierChip, tierRank } from "@/lib/prospecting-ui";
+import { tierChip } from "@/lib/prospecting-ui";
+import ConvertOpportunity from "./convert-opportunity";
 
 export const dynamic = "force-dynamic";
 
@@ -34,12 +35,16 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
   if (!company) notFound();
   const c = company as Company;
 
-  const [{ data: programs }, { data: opportunities }] = await Promise.all([
+  const [{ data: programs }, { data: opportunities }, { data: campaignList }, { data: deckList }] = await Promise.all([
     supabase.from("drug_programs").select("id, asset_name, modality, target, highest_phase, tumor_types, in_window, proprietary").eq("company_id", id).limit(500),
     supabase.from("opportunities").select("id, asset_name, target, modality, phase, fit_score, fit_tier, matched_tma_skus, suggested_capabilities, rationale, run_label").eq("company_id", id).limit(200),
+    supabase.from("campaigns").select("id, name").eq("status", "active").order("created_at", { ascending: false }),
+    supabase.from("decks").select("id, name").eq("archived", false).order("name"),
   ]);
   const progs = (programs ?? []) as Program[];
   const opps = ((opportunities ?? []) as Opp[]).sort((a, b) => (b.fit_score ?? -1) - (a.fit_score ?? -1));
+  const campaigns = (campaignList ?? []) as { id: string; name: string }[];
+  const decks = (deckList ?? []) as { id: string; name: string }[];
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
@@ -75,14 +80,24 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
                   <div><span className="font-medium text-ink">Matched TMAs:</span> {o.matched_tma_skus ?? "—"}</div>
                   <div><span className="font-medium text-ink">Suggested capabilities:</span> {o.suggested_capabilities ?? "—"}</div>
                 </div>
+                <div className="mt-3">
+                  <ConvertOpportunity
+                    companyId={c.id}
+                    campaigns={campaigns}
+                    decks={decks}
+                    defaults={{
+                      research: o.rationale ?? "",
+                      angle: [
+                        o.matched_tma_skus ? `Matched TMAs: ${o.matched_tma_skus}` : "",
+                        o.suggested_capabilities ? `Suggested capabilities: ${o.suggested_capabilities}` : "",
+                        `Opportunity: ${o.asset_name}${o.target ? ` (${o.target})` : ""}${o.phase ? ` · ${o.phase}` : ""}`,
+                      ].filter(Boolean).join("\n"),
+                    }}
+                  />
+                </div>
               </div>
             ))}
           </div>
-        )}
-        {opps.length > 0 && tierRank(opps[0].fit_tier) === 1 && (
-          <p className="mt-3 text-xs text-ink-muted/70">
-            Tip: convert a Tier&nbsp;1 opportunity into an ABM campaign + deck from <Link href="/campaigns" className="text-link hover:underline">Campaigns</Link>. (One-click conversion lands in Phase 3.)
-          </p>
         )}
       </section>
 
