@@ -32,6 +32,9 @@ export default async function AppHeader() {
             <Link href="/prospecting" className="font-medium text-white/90 transition-colors hover:text-primary">
               Prospecting
             </Link>
+            <Link href="/catalog" className="font-medium text-white/90 transition-colors hover:text-primary">
+              Catalog
+            </Link>
             {isAdmin && (
               <>
                 <Link href="/admin/users" className="font-medium text-white/90 transition-colors hover:text-primary">
