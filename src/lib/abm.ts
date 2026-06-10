@@ -25,6 +25,7 @@ export type CreateAccountInput = {
   research?: string | null;
   context?: string | null;
   angle?: string | null;
+  companyId?: string | null; // link to the prospecting company profile
   contacts: AccountContactInput[];
   cadence: CadenceStep[];
 };
@@ -44,6 +45,7 @@ export async function createAccount(admin: Admin, input: CreateAccountInput, act
       research: input.research ?? null,
       context: input.context ?? null,
       angle: input.angle ?? null,
+      company_id: input.companyId ?? null,
     })
     .select("id")
     .single();
