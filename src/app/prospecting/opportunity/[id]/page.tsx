@@ -36,6 +36,14 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const cohorts = (cohortRows ?? []) as Cohort[];
   const campaigns = (campaignList ?? []) as { id: string; name: string }[];
   const decks = (deckList ?? []) as { id: string; name: string }[];
+
+  // Resolve cohort TA#s to catalog ids so each links to its full TMA detail.
+  const taNumbers = [...new Set(cohorts.map((c) => c.ta_number).filter(Boolean) as string[])];
+  const tmaIdByTa = new Map<string, string>();
+  if (taNumbers.length) {
+    const { data: cat } = await supabase.from("tma_catalog").select("id, ta_number").in("ta_number", taNumbers);
+    for (const r of cat ?? []) if (r.ta_number) tmaIdByTa.set(r.ta_number as string, r.id as string);
+  }
   const caps = parseCaps(o.suggested_capabilities);
   const totalDonors = cohorts.reduce((s, c) => s + (c.donors ?? 0), 0);
 
@@ -117,7 +125,11 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
               <tbody className="divide-y divide-line">
                 {cohorts.map((c) => (
                   <tr key={c.id} className="align-top transition-colors hover:bg-surface-subtle">
-                    <td className="whitespace-nowrap px-4 py-2.5 font-mono text-ink">{c.ta_number}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 font-mono">
+                      {c.ta_number && tmaIdByTa.has(c.ta_number)
+                        ? <Link href={`/prospecting/tma/${tmaIdByTa.get(c.ta_number)}`} className="text-link hover:underline">{c.ta_number}</Link>
+                        : <span className="text-ink">{c.ta_number}</span>}
+                    </td>
                     <td className="px-4 py-2.5 text-ink">{c.cohort}</td>
                     <td className="px-4 py-2.5">
                       {c.custom_stain
