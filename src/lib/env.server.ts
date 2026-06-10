@@ -28,6 +28,9 @@ const schema = z.object({
   // sends it as a Bearer token when set. Leave blank to disable bearer auth (the
   // route then requires an admin session).
   CRON_SECRET: z.string().default(""),
+  // Bearer token the prospecting skill uses to POST run output to /api/prospecting/ingest.
+  // Leave blank to require an admin session instead.
+  PROSPECTING_INGEST_SECRET: z.string().default(""),
   // Public values are also readable server-side
   NEXT_PUBLIC_SUPABASE_URL: z.string().default(""),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().default(""),
