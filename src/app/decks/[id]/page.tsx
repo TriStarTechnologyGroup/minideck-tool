@@ -93,11 +93,23 @@ export default async function DeckDetailPage({ params }: { params: Promise<{ id:
               </a>
             </div>
           </div>
-          {isAdmin && (
-            <Link href={`/decks/${deck.id}/edit`} className="btn btn-ghost btn-xs">
-              Edit deck
-            </Link>
-          )}
+          <div className="flex items-center gap-2">
+            <a
+              href={`${deck.base_url.replace(/\/$/, "")}/${deck.slug}.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={`TriStar Technology Group — ${deck.name}.pdf`}
+              className="btn btn-ghost btn-xs"
+              aria-label={`Download the ${deck.name} deck as a PDF`}
+            >
+              ↓ PDF
+            </a>
+            {isAdmin && (
+              <Link href={`/decks/${deck.id}/edit`} className="btn btn-ghost btn-xs">
+                Edit deck
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 

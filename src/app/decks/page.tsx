@@ -69,6 +69,8 @@ export default async function DecksPage() {
 }
 
 function DeckCard({ deck, count, isAdmin }: { deck: Deck; count: number; isAdmin: boolean }) {
+  // PDF leave-behind lives next to the deck at <base_url>/<slug>.pdf (generated in minideck-decks).
+  const pdfUrl = `${deck.base_url.replace(/\/$/, "")}/${deck.slug}.pdf`;
   return (
     <div className="card group flex flex-col overflow-hidden transition-shadow hover:shadow-[var(--shadow-pop)]">
       <Link href={`/decks/${deck.id}`} className="block aspect-[16/10] w-full overflow-hidden bg-surface-blue">
@@ -101,15 +103,30 @@ function DeckCard({ deck, count, isAdmin }: { deck: Deck; count: number; isAdmin
         >
           {deck.base_url}
         </a>
-        <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
+        <div className="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3">
           <span className="text-sm font-medium text-ink">
             {count} link{count === 1 ? "" : "s"}
           </span>
-          {isAdmin && (
-            <Link href={`/decks/${deck.id}/edit`} className="text-xs font-medium text-link hover:underline">
-              Edit
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={`TriStar Technology Group — ${deck.name}.pdf`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-link hover:underline"
+              aria-label={`Download the ${deck.name} deck as a PDF`}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3v12" /><polyline points="7 10 12 15 17 10" /><path d="M5 21h14" />
+              </svg>
+              PDF
+            </a>
+            {isAdmin && (
+              <Link href={`/decks/${deck.id}/edit`} className="text-xs font-medium text-link hover:underline">
+                Edit
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </div>
