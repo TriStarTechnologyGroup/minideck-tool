@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
-export type Capability = { id: string; capability_id: string | null; name: string; category: string | null; description: string | null };
+export type Capability = { id: string; capability_id: string | null; name: string; category: string | null; description: string | null; hubspot_product_id: string | null };
 export type Tma = {
-  id: string; sku: string | null; ta_number: string | null; name: string | null; short_description: string | null;
+  id: string; sku: string | null; ta_number: string | null; name: string | null; short_description: string | null; hubspot_product_id: string | null;
   description: string | null; categories: string | null; primary_categories: string | null; product_cat: string | null; cancer: string | null;
   donor_samples_each: number | null; approx_cores: number | null; approx_donors: number | null;
   number_of_cores: string | null; number_of_donors: string | null; core_size: string | null; markers: string | null;
@@ -20,17 +20,45 @@ const fc = "w-full rounded-sm border border-line-strong bg-surface px-2 py-1 tex
 
 export default function CatalogManager({ tmas, capabilities, isAdmin }: { tmas: Tma[]; capabilities: Capability[]; isAdmin: boolean }) {
   const [tab, setTab] = useState<"tmas" | "capabilities">("tmas");
+  const synced = tmas.filter((t) => t.hubspot_product_id).length + capabilities.filter((c) => c.hubspot_product_id).length;
+  const total = tmas.length + capabilities.length;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-1 border-b border-line">
-        {(["tmas", "capabilities"] as const).map((t) => (
-          <button key={t} type="button" onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t ? "border-primary text-ink" : "border-transparent text-ink-muted hover:text-ink"}`}>
-            {t === "tmas" ? `Tissue microarrays (${tmas.length})` : `Capabilities (${capabilities.length})`}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line">
+        <div className="flex gap-1">
+          {(["tmas", "capabilities"] as const).map((t) => (
+            <button key={t} type="button" onClick={() => setTab(t)}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t ? "border-primary text-ink" : "border-transparent text-ink-muted hover:text-ink"}`}>
+              {t === "tmas" ? `Tissue microarrays (${tmas.length})` : `Capabilities (${capabilities.length})`}
+            </button>
+          ))}
+        </div>
+        {isAdmin && <SyncHubspot synced={synced} total={total} />}
       </div>
       {tab === "tmas" ? <TmaManager tmas={tmas} isAdmin={isAdmin} /> : <CapabilitiesManager capabilities={capabilities} isAdmin={isAdmin} />}
+    </div>
+  );
+}
+
+// Mirror the whole catalog into the HubSpot product library (admin). Shows how many items
+// are currently linked to a HubSpot product (hubspot_product_id present).
+function SyncHubspot({ synced, total }: { synced: number; total: number }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function run() {
+    setBusy(true); setMsg(null);
+    const res = await fetch("/api/catalog/sync-hubspot", { method: "POST" });
+    const json = await res.json().catch(() => null);
+    setBusy(false);
+    if (res.ok) { setMsg(`Synced ${json.synced}/${json.tmas + json.capabilities}${json.errors?.length ? ` · ${json.errors.length} error(s)` : ""}`); router.refresh(); }
+    else setMsg(json?.error ?? "Sync failed");
+  }
+  return (
+    <div className="mb-1 flex items-center gap-3 text-xs">
+      <span className="text-ink-muted">{synced}/{total} in HubSpot</span>
+      <button type="button" className="btn btn-secondary btn-xs" disabled={busy} onClick={run}>{busy ? "Syncing…" : "Sync to HubSpot"}</button>
+      {msg && <span className="text-ink-muted">{msg}</span>}
     </div>
   );
 }

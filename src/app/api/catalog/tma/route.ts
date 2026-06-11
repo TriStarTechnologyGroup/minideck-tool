@@ -3,6 +3,9 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiAdmin } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
+import { syncTmaProduct, archiveCatalogProduct } from "@/lib/hubspot-catalog-sync";
+
+const TMA_SELECT = "id, sku, name, short_description, hubspot_product_id";
 
 // POST /api/catalog/tma — create / update / delete a TMA catalog SKU (admin only).
 const num = z.number().int().nullish();
@@ -46,16 +49,26 @@ export async function POST(req: NextRequest) {
   const d = parsed.data;
   const admin = createAdminClient();
 
+  let hubspotWarning: string | undefined;
+  const syncProduct = async (id: string) => {
+    const { data: row } = await admin.from("tma_catalog").select(TMA_SELECT).eq("id", id).single();
+    if (row) try { await syncTmaProduct(admin, row); } catch (e) { hubspotWarning = `HubSpot product sync failed: ${e instanceof Error ? e.message : String(e)}`; }
+  };
+
   if (d.action === "create") {
-    const { error } = await admin.from("tma_catalog").insert(d.data);
+    const { data: row, error } = await admin.from("tma_catalog").insert(d.data).select("id").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    await syncProduct(row.id);
   } else if (d.action === "update") {
     const { error } = await admin.from("tma_catalog").update(d.data).eq("id", d.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    await syncProduct(d.id);
   } else {
+    const { data: row } = await admin.from("tma_catalog").select("hubspot_product_id").eq("id", d.id).single();
     const { error } = await admin.from("tma_catalog").delete().eq("id", d.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    await archiveCatalogProduct(row?.hubspot_product_id);
   }
   await logAudit({ actorId: guard.profile.id, actorEmail: guard.profile.email, action: `tma.${d.action}`, targetType: "tma_catalog", target: "id" in d ? d.id : undefined });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...(hubspotWarning ? { hubspotWarning } : {}) });
 }
