@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchRfqDeals, fetchFormSubmissions, isHubspotConfigured, type RfqDeal } from "@/lib/hubspot";
-import { classifyOrg, type OrgCategory } from "@/lib/classify";
+import { classifyOrg, classifyByDomain, type OrgCategory } from "@/lib/classify";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -15,6 +15,22 @@ const DEFAULT_LOOKBACK_DAYS = 7; // first run only (no rows yet)
 export type InboundSyncResult = { rfq: number; forms: number; inserted: number; updated: number; errors: string[] };
 
 const domainOf = (email: string | null | undefined) => (email && email.includes("@") ? email.split("@")[1].toLowerCase() : null);
+
+type Resolved = { classification: OrgCategory; classification_reason: string | null; prospect_eligible: boolean };
+
+/**
+ * Classify an org for the academia/industry gate. The HubSpot pipeline is only a weak signal —
+ * academic institutions (Duke, Ohio State, NCI…) routinely sit in the Pharma & Biotech pipeline —
+ * so we classify by: (1) Academic pipeline → academia (hard); (2) email-domain rule (.edu/.gov,
+ * no AI); (3) Claude. prospect_eligible = industry only. Fails safe to 'unknown' (not eligible).
+ */
+async function resolveClassification(opts: { academicPipeline?: boolean; company?: string | null; domain?: string | null; message?: string | null }): Promise<Resolved> {
+  if (opts.academicPipeline) return { classification: "academia", classification_reason: "HubSpot Academic pipeline", prospect_eligible: false };
+  const ruled = classifyByDomain(opts.domain);
+  if (ruled) return { classification: ruled, classification_reason: `domain rule (${opts.domain})`, prospect_eligible: ruled === "industry" };
+  const c = await classifyOrg({ company: opts.company, domain: opts.domain, message: opts.message });
+  return { classification: c.category, classification_reason: c.reason, prospect_eligible: c.category === "industry" };
+}
 
 /** Upsert one inquiry by (hubspot_object_type, hubspot_object_id). HubSpot-sourced fields refresh
  *  on every sync; reviewer-owned fields (status, classification, company_id) are set on insert
@@ -32,15 +48,18 @@ async function upsertInquiry(admin: Admin, row: Record<string, unknown>, classif
 }
 
 function dealRow(d: RfqDeal, pipeline: "pharma" | "academic") {
-  const industry = pipeline === "pharma";
+  const company = d.contact?.company ?? null;
+  const domain = domainOf(d.contact?.email);
   return {
     row: {
       source: "rfq", hubspot_object_type: "deal", hubspot_object_id: d.id, hubspot_contact_id: d.contact?.id ?? null,
-      company_name: d.contact?.company ?? null, company_domain: domainOf(d.contact?.email),
+      company_name: company, company_domain: domain,
       contact_name: [d.contact?.firstname, d.contact?.lastname].filter(Boolean).join(" ") || null, contact_email: d.contact?.email ?? null,
       subject: d.dealname, message: null, requested_products: d.lineItems, pipeline: d.pipeline, stage: d.dealstage, amount: d.amount, received_at: d.createdate,
     },
-    classify: async () => ({ classification: (industry ? "industry" : "academia") as OrgCategory, classification_reason: `HubSpot ${industry ? "Pharma & Biotech" : "Academic"} pipeline`, prospect_eligible: industry }),
+    // Academic pipeline is a hard academia signal; Pharma pipeline still needs real classification
+    // (academic orgs land there too), so resolve by domain rule → Claude.
+    classify: () => resolveClassification({ academicPipeline: pipeline === "academic", company, domain }),
   };
 }
 
@@ -74,10 +93,7 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
         company_name: v.company ?? null, company_domain: domainOf(email), contact_name: [v.firstname, v.lastname].filter(Boolean).join(" ") || null, contact_email: email,
         subject: v.how_can_we_help_you_ ?? null, message: v.message ?? null, requested_products: null, pipeline: null, stage: null, amount: null, received_at: s.submittedAt,
       };
-      await upsertInquiry(admin, row, async () => {
-        const c = await classifyOrg({ company: v.company, domain: domainOf(email), message: v.message });
-        return { classification: c.category, classification_reason: c.reason, prospect_eligible: c.category === "industry" };
-      }, result);
+      await upsertInquiry(admin, row, () => resolveClassification({ company: v.company, domain: domainOf(email), message: v.message }), result);
       result.forms++;
     }
   } catch (e) { result.errors.push(`forms: ${e instanceof Error ? e.message : String(e)}`); }
