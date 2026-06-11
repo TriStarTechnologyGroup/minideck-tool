@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { serverEnv } from "@/lib/env.server";
-import { requireApiAdmin } from "@/lib/api";
+import { requireProspectingAccess } from "@/lib/api";
 import { ingestProspecting, prospectingPayload } from "@/lib/prospecting";
 
 // POST /api/prospecting/ingest — the bridge the Claude prospecting skill calls to log a
@@ -9,12 +8,8 @@ import { ingestProspecting, prospectingPayload } from "@/lib/prospecting";
 // PROSPECTING_INGEST_SECRET (for the headless skill) or an admin session (manual).
 // Returns the per-table insert/upsert counts.
 export async function POST(req: NextRequest) {
-  const secret = serverEnv.PROSPECTING_INGEST_SECRET;
-  const authed = Boolean(secret) && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!authed) {
-    const guard = await requireApiAdmin();
-    if (guard.error) return guard.error;
-  }
+  const denied = await requireProspectingAccess(req);
+  if (denied) return denied;
 
   let body: unknown;
   try {

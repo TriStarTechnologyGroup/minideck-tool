@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getProfile, type Profile } from "@/lib/auth";
+import { serverEnv } from "@/lib/env.server";
 
 type Guard =
   | { profile: Profile; error?: undefined }
@@ -19,4 +20,15 @@ export async function requireApiAdmin(): Promise<Guard> {
   if (profile.role !== "admin")
     return { error: NextResponse.json({ error: "Forbidden — admin only" }, { status: 403 }) };
   return { profile };
+}
+
+/**
+ * Auth for prospecting endpoints: the headless skill's bearer PROSPECTING_INGEST_SECRET,
+ * or an admin session (manual use). Returns null when authorized, else a 401/403 Response.
+ */
+export async function requireProspectingAccess(req: NextRequest): Promise<NextResponse | null> {
+  const secret = serverEnv.PROSPECTING_INGEST_SECRET;
+  if (secret && req.headers.get("authorization") === `Bearer ${secret}`) return null;
+  const guard = await requireApiAdmin();
+  return guard.error ?? null;
 }
