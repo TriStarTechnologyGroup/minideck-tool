@@ -6,6 +6,7 @@ import { tierChip, parseCaps } from "@/lib/prospecting-ui";
 import ConvertOpportunity from "../../[id]/convert-opportunity";
 import ScoreBreakdown, { type ScoreComponent, type Feedback } from "./score-breakdown";
 import CapabilitiesPanel, { type OppCapability } from "./capabilities-panel";
+import DeleteOpportunity from "./delete-opportunity";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ type Trial = {
 };
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const profile = await requireUser();
   const { id } = await params;
   const supabase = await createClient();
 
@@ -83,7 +84,12 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-3xl">{o.asset_name}</h1>
           {o.fit_tier && <span className={`chip ${tierChip(o.fit_tier)}`}>{o.fit_tier}</span>}
-          {o.fit_score != null && <span className="text-sm text-ink-muted">Fit score {o.fit_score}</span>}
+          {o.fit_score != null && (
+            scoreComponents.length === 0
+              ? <span className="inline-flex items-center gap-1.5 rounded-sm bg-surface-muted px-2 py-0.5 text-sm text-ink-muted" title="No per-parameter breakdown was captured for this run — treat the score as provisional.">Fit score {o.fit_score} · <span className="text-amber-600">provisional</span></span>
+              : <span className="text-sm text-ink-muted">Fit score {o.fit_score}</span>
+          )}
+          {profile.role === "admin" && <span className="ml-auto"><DeleteOpportunity id={o.id} assetName={o.asset_name} backHref={o.company_id ? `/prospecting/${o.company_id}` : "/prospecting"} /></span>}
         </div>
         <p className="mt-1 text-sm text-ink-muted">{o.company_name}{o.run_label ? ` · ${o.run_label}` : ""}</p>
       </div>
