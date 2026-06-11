@@ -1,6 +1,20 @@
 import Link from "next/link";
 import { getProfile } from "@/lib/auth";
 import MobileMenu from "./mobile-menu";
+import { NavDropdown, AccountMenu } from "./nav-menus";
+
+const PRIMARY_NAV = [
+  { href: "/decks", label: "Decks" },
+  { href: "/leads", label: "Leads" },
+  { href: "/campaigns", label: "Campaigns" },
+  { href: "/prospecting", label: "Prospecting" },
+  { href: "/catalog", label: "Catalog" },
+];
+const ADMIN_NAV = [
+  { href: "/admin/users", label: "Users" },
+  { href: "/admin/audit", label: "Audit" },
+  { href: "/admin/scoring", label: "Scoring model" },
+];
 
 export default async function AppHeader() {
   const profile = await getProfile();
@@ -21,50 +35,19 @@ export default async function AppHeader() {
             />
           </Link>
           <nav className="hidden items-center gap-5 text-sm lg:flex">
-            <Link href="/decks" className="font-medium text-white/90 transition-colors hover:text-primary">
-              Decks
-            </Link>
-            <Link href="/leads" className="font-medium text-white/90 transition-colors hover:text-primary">
-              Leads
-            </Link>
-            <Link href="/campaigns" className="font-medium text-white/90 transition-colors hover:text-primary">
-              Campaigns
-            </Link>
-            <Link href="/prospecting" className="font-medium text-white/90 transition-colors hover:text-primary">
-              Prospecting
-            </Link>
-            <Link href="/catalog" className="font-medium text-white/90 transition-colors hover:text-primary">
-              Catalog
-            </Link>
-            {isAdmin && (
-              <>
-                <Link href="/admin/users" className="font-medium text-white/90 transition-colors hover:text-primary">
-                  Users
-                </Link>
-                <Link href="/admin/audit" className="font-medium text-white/90 transition-colors hover:text-primary">
-                  Audit
-                </Link>
-                <Link href="/admin/scoring" className="font-medium text-white/90 transition-colors hover:text-primary">
-                  Scoring
-                </Link>
-              </>
-            )}
+            {PRIMARY_NAV.map((i) => (
+              <Link key={i.href} href={i.href} className="font-medium text-white/90 transition-colors hover:text-primary">
+                {i.label}
+              </Link>
+            ))}
+            {isAdmin && <NavDropdown label="Admin" items={ADMIN_NAV} />}
           </nav>
         </div>
 
         <div className="flex items-center gap-3 text-sm">
-          <span className="hidden text-white/60 xl:inline">{profile.email}</span>
-          <span className={`chip ${isAdmin ? "bg-primary/20 text-primary-light" : "bg-white/10 text-white/70"}`}>
-            {profile.role}
-          </span>
-          <form action="/auth/signout" method="post">
-            <button
-              type="submit"
-              className="whitespace-nowrap rounded-none border border-white/25 px-2.5 py-1 text-xs font-medium text-white/90 transition-colors hover:bg-white/10"
-            >
-              Sign out
-            </button>
-          </form>
+          <div className="hidden lg:block">
+            <AccountMenu email={profile.email} role={profile.role} />
+          </div>
           <MobileMenu isAdmin={isAdmin} email={profile.email} />
         </div>
       </div>

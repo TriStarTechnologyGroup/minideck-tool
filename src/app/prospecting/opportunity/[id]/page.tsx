@@ -7,6 +7,7 @@ import ConvertOpportunity from "../../[id]/convert-opportunity";
 import ScoreBreakdown, { type ScoreComponent, type Feedback } from "./score-breakdown";
 import CapabilitiesPanel, { type OppCapability } from "./capabilities-panel";
 import DeleteOpportunity from "./delete-opportunity";
+import TmaPanel, { type AddedTma, type CatalogItem } from "./tma-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -49,22 +50,27 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const campaigns = (campaignList ?? []) as { id: string; name: string }[];
   const decks = (deckList ?? []) as { id: string; name: string }[];
 
-  const [{ data: componentRows }, { data: capabilityRows }, { data: feedbackRow }] = await Promise.all([
+  const [{ data: componentRows }, { data: capabilityRows }, { data: feedbackRow }, { data: tmaFeedbackRows }, { data: catalogRows }] = await Promise.all([
     supabase.from("opportunity_score_components").select("id, component, weight_max, points, note").eq("opportunity_id", id).order("sort_order"),
     supabase.from("opportunity_capabilities").select("id, capability_id, label, source, confirmed").eq("opportunity_id", id).order("source").order("created_at"),
     supabase.from("opportunity_feedback").select("reviewer_score, component_points, verdict, notes").eq("opportunity_id", id).maybeSingle(),
+    supabase.from("opportunity_tma_feedback").select("ta_number, sku, label, verdict").eq("opportunity_id", id),
+    supabase.from("tma_catalog").select("id, sku, ta_number, name").order("sku").limit(2000),
   ]);
   const scoreComponents = (componentRows ?? []) as ScoreComponent[];
   const oppCapabilities = (capabilityRows ?? []) as OppCapability[];
   const feedback = (feedbackRow ?? null) as Feedback;
 
-  // Resolve cohort TA#s to catalog ids so each links to its full TMA detail.
-  const taNumbers = [...new Set(cohorts.map((c) => c.ta_number).filter(Boolean) as string[])];
-  const tmaIdByTa = new Map<string, string>();
-  if (taNumbers.length) {
-    const { data: cat } = await supabase.from("tma_catalog").select("id, ta_number").in("ta_number", taNumbers);
-    for (const r of cat ?? []) if (r.ta_number) tmaIdByTa.set(r.ta_number as string, r.id as string);
+  // TMA reviewer feedback (keyed by TA#) + catalog (TA# → id for links, and the add picker).
+  const tmaVerdicts: Record<string, "confirmed" | "rejected" | "added"> = {};
+  const addedTmas: AddedTma[] = [];
+  for (const r of (tmaFeedbackRows ?? []) as { ta_number: string; sku: string | null; label: string | null; verdict: "confirmed" | "rejected" | "added" }[]) {
+    tmaVerdicts[r.ta_number] = r.verdict;
+    if (r.verdict === "added") addedTmas.push({ ta_number: r.ta_number, sku: r.sku, label: r.label });
   }
+  const catalog = (catalogRows ?? []) as CatalogItem[];
+  const tmaLinkByTa: Record<string, string> = {};
+  for (const r of catalog) if (r.ta_number) tmaLinkByTa[r.ta_number] = r.id;
   const caps = parseCaps(o.suggested_capabilities);
   const totalDonors = cohorts.reduce((s, c) => s + (c.donors ?? 0), 0);
 
@@ -142,46 +148,10 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
             ({cohorts.length}{totalDonors ? ` · ${totalDonors.toLocaleString()} donors` : ""})
           </span>
         </h2>
-        {cohorts.length === 0 ? (
-          <p className="card px-6 py-8 text-center text-sm text-ink-muted">
-            {o.matched_tma_skus ? o.matched_tma_skus : "No matched cohorts on file. Re-run the prospecting skill to populate this opportunity's detail."}
-          </p>
-        ) : (
-          <div className="card overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">TA #</th>
-                  <th className="px-4 py-2.5 font-medium">Cohort</th>
-                  <th className="px-4 py-2.5 font-medium">Markers</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Donors</th>
-                  <th className="px-4 py-2.5 font-medium">Category</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {cohorts.map((c) => (
-                  <tr key={c.id} className="align-top transition-colors hover:bg-surface-subtle">
-                    <td className="whitespace-nowrap px-4 py-2.5 font-mono">
-                      {c.ta_number && tmaIdByTa.has(c.ta_number)
-                        ? <Link href={`/prospecting/tma/${tmaIdByTa.get(c.ta_number)}`} className="text-link hover:underline">{c.ta_number}</Link>
-                        : <span className="text-ink">{c.ta_number}</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-ink">{c.cohort}</td>
-                    <td className="px-4 py-2.5">
-                      {c.custom_stain
-                        ? <span className="text-xs text-ink-muted/70">custom stain</span>
-                        : <span className="text-ink-muted">{c.markers ?? "—"}</span>}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-ink">{c.donors?.toLocaleString() ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-xs text-ink-muted">{c.category ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <TmaPanel opportunityId={o.id} cohorts={cohorts} verdicts={tmaVerdicts} added={addedTmas} catalog={catalog} tmaLinkByTa={tmaLinkByTa} />
         <p className="mt-2 text-xs text-ink-muted/70">
           Markers shown are pre-run on that SKU; “custom stain” means the program target is added as a custom IHC stain. Donor counts are catalog figures.
+          Confirm/reject and added TMAs are saved and read back by the prospecting skill to refine matching.
         </p>
       </section>
 
@@ -193,38 +163,54 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           <div className="flex flex-col gap-3">
             {trials.map((t) => {
               const flags = (t.relevance_flags ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-              const meta = [
-                t.status, t.phase, t.enrollment != null ? `n=${t.enrollment.toLocaleString()}` : null,
-                [t.start_date, t.primary_completion_date].filter(Boolean).join(" → ") || null,
-              ].filter(Boolean);
+              const dates = [t.start_date, t.primary_completion_date].filter(Boolean).join(" → ");
+              const s = (t.status ?? "").toLowerCase();
+              const statusCls = /recruit|enroll|active|avail/.test(s) ? "bg-emerald-50 text-emerald-700"
+                : /complet/.test(s) ? "bg-surface-blue-soft text-link"
+                : /terminat|withdraw|suspend/.test(s) ? "bg-red-50 text-red-700"
+                : "bg-surface-muted text-ink-muted";
+              const details: [string, string | null][] = [
+                ["Regimen", t.interventions], ["Indications", t.conditions],
+                ["Tissue", t.tissue_requirements], ["Selection", t.selection_biomarkers],
+                ["Endpoints", t.primary_endpoints],
+              ];
+              const shown = details.filter((d) => d[1]);
               return (
-                <div key={t.id} className="card p-4">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div key={t.id} className="card overflow-hidden p-0">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-subtle px-4 py-2.5">
                     {t.nct_id && (
-                      <a href={t.url ?? `https://clinicaltrials.gov/study/${t.nct_id}`} target="_blank" rel="noreferrer" className="font-mono text-sm font-medium text-link hover:underline">{t.nct_id}</a>
+                      <a href={t.url ?? `https://clinicaltrials.gov/study/${t.nct_id}`} target="_blank" rel="noreferrer" className="font-mono text-sm font-semibold text-link hover:underline">{t.nct_id}</a>
                     )}
-                    {t.has_results && <span className="chip bg-surface-blue-soft text-link">results available</span>}
-                    {meta.length > 0 && <span className="text-xs text-ink-muted">{meta.join(" · ")}</span>}
+                    {t.status && <span className={`chip ${statusCls}`}>{t.status}</span>}
+                    {t.phase && <span className="chip bg-surface-muted text-nav">{t.phase}</span>}
+                    {t.enrollment != null && <span className="chip bg-surface-muted text-ink-muted">n={t.enrollment.toLocaleString()}</span>}
+                    {t.has_results && <span className="chip bg-surface-blue-soft text-link">results</span>}
+                    {dates && <span className="ml-auto whitespace-nowrap text-xs text-ink-muted">{dates}</span>}
                   </div>
-                  {t.title && <p className="mt-1.5 text-sm text-ink">{t.title}</p>}
+                  <div className="p-4">
+                    {t.title && <p className="text-sm font-medium leading-snug text-ink">{t.title}</p>}
 
-                  {flags.length > 0 && (
-                    <div className="mt-3">
-                      <div className="mb-1.5 text-[0.7rem] uppercase tracking-wide text-ink-muted">Why it matters to TriStar</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {flags.map((fl, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 rounded-sm bg-surface-blue-soft px-2 py-0.5 text-xs text-link">{fl}</span>
-                        ))}
+                    {flags.length > 0 && (
+                      <div className="mt-3 rounded-md border-l-[3px] border-primary bg-surface-blue-soft/50 px-3 py-2">
+                        <div className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-link">Why it matters to TriStar</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {flags.map((fl, i) => (
+                            <span key={i} className="inline-flex items-center rounded-sm bg-surface px-2 py-0.5 text-xs text-link">{fl}</span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <div className="mt-3 grid gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
-                    {t.interventions && <div><span className="font-medium text-ink">Regimen:</span> <span className="text-ink-muted">{t.interventions}</span></div>}
-                    {t.conditions && <div><span className="font-medium text-ink">Indications:</span> <span className="text-ink-muted">{t.conditions}</span></div>}
-                    {t.tissue_requirements && <div><span className="font-medium text-ink">Tissue:</span> <span className="text-ink-muted">{t.tissue_requirements}</span></div>}
-                    {t.selection_biomarkers && <div><span className="font-medium text-ink">Selection:</span> <span className="text-ink-muted">{t.selection_biomarkers}</span></div>}
-                    {t.primary_endpoints && <div className="sm:col-span-2"><span className="font-medium text-ink">Endpoints:</span> <span className="text-ink-muted">{t.primary_endpoints}</span></div>}
+                    {shown.length > 0 && (
+                      <dl className="mt-3 grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
+                        {shown.map(([label, v]) => (
+                          <div key={label} className={label === "Endpoints" ? "sm:col-span-2" : ""}>
+                            <dt className="text-[0.65rem] font-medium uppercase tracking-wide text-ink-muted">{label}</dt>
+                            <dd className={`mt-0.5 text-xs text-ink ${label === "Tissue" ? "font-medium" : ""}`}>{v}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
                   </div>
                 </div>
               );

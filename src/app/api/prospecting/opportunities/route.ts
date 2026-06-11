@@ -45,12 +45,26 @@ export async function GET(req: NextRequest) {
     childIds("opportunity_trials"), childIds("opportunity_feedback"),
   ]);
 
+  // Reviewer TMA feedback per opportunity, so the skill can hone matching next run.
+  const tmaByOpp = new Map<string, { confirmed: string[]; rejected: string[]; added: { ta_number: string; sku: string | null; label: string | null }[] }>();
+  if (ids.length) {
+    const { data: tf } = await admin.from("opportunity_tma_feedback").select("opportunity_id, ta_number, sku, label, verdict").in("opportunity_id", ids);
+    for (const r of tf ?? []) {
+      const e = tmaByOpp.get(r.opportunity_id as string) ?? { confirmed: [], rejected: [], added: [] };
+      if (r.verdict === "confirmed") e.confirmed.push(r.ta_number as string);
+      else if (r.verdict === "rejected") e.rejected.push(r.ta_number as string);
+      else if (r.verdict === "added") e.added.push({ ta_number: r.ta_number as string, sku: r.sku as string | null, label: r.label as string | null });
+      tmaByOpp.set(r.opportunity_id as string, e);
+    }
+  }
+
   const rows = (opps ?? []).map((o) => ({
     ...o,
     has_score_components: comps.has(o.id),
     has_cohorts: cohorts.has(o.id),
     has_trials: trials.has(o.id),
     has_feedback: feedback.has(o.id),
+    tma_feedback: tmaByOpp.get(o.id) ?? { confirmed: [], rejected: [], added: [] },
   }));
   return NextResponse.json({ company: company ?? null, company_id: companyId, count: rows.length, opportunities: rows });
 }
