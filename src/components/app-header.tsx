@@ -7,6 +7,7 @@ const PRIMARY_NAV = [
   { href: "/decks", label: "Decks" },
   { href: "/leads", label: "Leads" },
   { href: "/campaigns", label: "Campaigns" },
+  { href: "/inbound", label: "Inbound" },
   { href: "/prospecting", label: "Prospecting" },
   { href: "/catalog", label: "Catalog" },
 ];

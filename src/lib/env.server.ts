@@ -31,6 +31,9 @@ const schema = z.object({
   // Bearer token the prospecting skill uses to POST run output to /api/prospecting/ingest.
   // Leave blank to require an admin session instead.
   PROSPECTING_INGEST_SECRET: z.string().default(""),
+  // Anthropic API key — in-app classification + reply drafting for inbound inquiries.
+  // Blank → in-app AI disabled (contact-form orgs stay 'unknown' until set).
+  ANTHROPIC_API_KEY: z.string().default(""),
   // Public values are also readable server-side
   NEXT_PUBLIC_SUPABASE_URL: z.string().default(""),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().default(""),

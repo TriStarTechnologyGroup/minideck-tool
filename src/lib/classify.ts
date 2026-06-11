@@ -1,0 +1,43 @@
+import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
+import { serverEnv } from "@/lib/env.server";
+
+// In-app org classification for inbound contact-form inquiries (RFQ inquiries are classified
+// by HubSpot pipeline, no AI needed). Cheap/fast Haiku tier; structured JSON via output_config.
+// Gracefully returns 'unknown' when ANTHROPIC_API_KEY is unset.
+
+export type OrgCategory = "industry" | "academia" | "non_profit" | "government" | "other" | "unknown";
+
+const Result = z.object({
+  category: z.enum(["industry", "academia", "non_profit", "government", "other"]),
+  reason: z.string().max(280),
+});
+
+const SYSTEM = `You classify the ORGANIZATION behind an inbound inquiry to TriStar Technology Group, an oncology-focused biospecimen/CRO.
+Categories:
+- "industry": a for-profit company — pharma, biotech, diagnostics, or AI/computational-pathology. These are TriStar's prospecting targets.
+- "academia": a university, academic medical center, or research institute (incl. .edu / .ac.* domains).
+- "non_profit": a non-profit, foundation, or charity.
+- "government": a government or public agency.
+- "other": anything else, or genuinely unclear.
+A name like "Acme Therapeutics / Stanford University" that mixes a company and a university is "industry" if a real company is involved (the company is the buyer). Decide from the company name, email domain, and message. Keep the reason to one sentence.`;
+
+export async function classifyOrg(input: { company?: string | null; domain?: string | null; message?: string | null }): Promise<{ category: OrgCategory; reason: string | null }> {
+  if (!serverEnv.ANTHROPIC_API_KEY) return { category: "unknown", reason: "ANTHROPIC_API_KEY not set" };
+  const client = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
+  try {
+    const res = await client.messages.parse({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      system: SYSTEM,
+      messages: [{ role: "user", content: `Company: ${input.company ?? "(unknown)"}\nEmail domain: ${input.domain ?? "(unknown)"}\nMessage: ${(input.message ?? "").slice(0, 1500)}` }],
+      output_config: { format: zodOutputFormat(Result) },
+    });
+    const out = res.parsed_output;
+    return out ? { category: out.category, reason: out.reason } : { category: "unknown", reason: "no structured output" };
+  } catch (e) {
+    return { category: "unknown", reason: `classify error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
