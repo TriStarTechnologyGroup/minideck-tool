@@ -44,6 +44,9 @@ export default function MobileMenu({ isAdmin, email }: { isAdmin: boolean; email
                 {label}
               </Link>
             ))}
+            <form action="/auth/signout" method="post" className="border-t border-line">
+              <button type="submit" className="block w-full px-4 py-2 text-left text-sm text-ink hover:bg-surface-subtle">Sign out</button>
+            </form>
           </nav>
         </>
       )}
