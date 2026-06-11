@@ -51,7 +51,7 @@ function SyncHubspot({ synced, total }: { synced: number; total: number }) {
     const res = await fetch("/api/catalog/sync-hubspot", { method: "POST" });
     const json = await res.json().catch(() => null);
     setBusy(false);
-    if (res.ok) { setMsg(`Synced ${json.synced}/${json.tmas + json.capabilities}${json.errors?.length ? ` · ${json.errors.length} error(s)` : ""}`); router.refresh(); }
+    if (res.ok) { setMsg(`Synced ${json.synced}/${json.tmas + json.capabilities} · ${json.adopted} matched, ${json.created} new${json.errors?.length ? ` · ${json.errors.length} error(s)` : ""}`); router.refresh(); }
     else setMsg(json?.error ?? "Sync failed");
   }
   return (
