@@ -10,6 +10,17 @@ import { serverEnv } from "@/lib/env.server";
 
 export type OrgCategory = "industry" | "academia" | "non_profit" | "government" | "other" | "unknown";
 
+/** Cheap, deterministic classification from the email domain — no AI, no credits needed.
+ *  Catches the common academic/gov cases (.edu / .ac.* / .gov / .mil). Returns null when the
+ *  domain doesn't decide it (→ caller falls back to the AI classifier). */
+export function classifyByDomain(domain: string | null | undefined): OrgCategory | null {
+  const d = (domain ?? "").toLowerCase().trim();
+  if (!d) return null;
+  if (d.endsWith(".edu") || d.includes(".edu.") || /\.ac\.[a-z]{2,}$/.test(d)) return "academia";
+  if (d.endsWith(".gov") || d.includes(".gov.") || d.endsWith(".mil")) return "government";
+  return null;
+}
+
 const Result = z.object({
   category: z.enum(["industry", "academia", "non_profit", "government", "other"]),
   reason: z.string().max(280),
