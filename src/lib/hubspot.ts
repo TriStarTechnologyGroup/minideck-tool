@@ -273,3 +273,88 @@ export async function archiveProduct(productId: string): Promise<void> {
   const res = await fetch(`${BASE}/crm/v3/objects/products/${productId}`, { method: "DELETE", headers: headers() });
   if (!res.ok && res.status !== 404) throw new Error(`product archive: ${res.status} ${await res.text()}`);
 }
+
+// ───────────────────────── Inbound reads (RFQ deals + contact forms) ─────────────────────────
+
+export type RfqDeal = {
+  id: string; dealname: string | null; dealstage: string | null; pipeline: string | null;
+  amount: number | null; createdate: string | null;
+  contact: { id: string; email: string | null; firstname: string | null; lastname: string | null; company: string | null } | null;
+  lineItems: { sku: string | null; name: string | null; quantity: number | null; hubspot_product_id: string | null }[];
+};
+
+async function batchReadContacts(ids: string[]): Promise<Map<string, RfqDeal["contact"]>> {
+  const out = new Map<string, RfqDeal["contact"]>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const res = await fetch(`${BASE}/crm/v3/objects/contacts/batch/read`, { method: "POST", headers: headers(),
+      body: JSON.stringify({ properties: ["email", "firstname", "lastname", "company"], inputs: chunk.map((id) => ({ id })) }) });
+    if (!res.ok) continue;
+    for (const c of (await res.json()).results ?? []) out.set(String(c.id), { id: String(c.id), email: c.properties?.email ?? null, firstname: c.properties?.firstname ?? null, lastname: c.properties?.lastname ?? null, company: c.properties?.company ?? null });
+  }
+  return out;
+}
+
+async function batchReadLineItems(ids: string[]): Promise<Map<string, RfqDeal["lineItems"][number]>> {
+  const out = new Map<string, RfqDeal["lineItems"][number]>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const res = await fetch(`${BASE}/crm/v3/objects/line_items/batch/read`, { method: "POST", headers: headers(),
+      body: JSON.stringify({ properties: ["name", "hs_sku", "quantity", "hs_product_id"], inputs: chunk.map((id) => ({ id })) }) });
+    if (!res.ok) continue;
+    for (const li of (await res.json()).results ?? []) out.set(String(li.id), { sku: li.properties?.hs_sku ?? null, name: li.properties?.name ?? null, quantity: li.properties?.quantity != null ? Number(li.properties.quantity) : null, hubspot_product_id: li.properties?.hs_product_id ?? null });
+  }
+  return out;
+}
+
+/** RFQ deals in a pipeline modified since `sinceIso`, with their contact + line items (the cart). */
+export async function fetchRfqDeals(pipelineId: string, sinceIso: string): Promise<RfqDeal[]> {
+  const sinceMs = String(Date.parse(sinceIso));
+  // 1. find candidate deal ids via search (pipeline + last-modified filter)
+  const deals: { id: string; props: Record<string, string>; contactIds: string[]; lineItemIds: string[] }[] = [];
+  let after: string | undefined;
+  do {
+    const res = await fetch(`${BASE}/crm/v3/objects/deals/search`, { method: "POST", headers: headers(), body: JSON.stringify({
+      filterGroups: [{ filters: [{ propertyName: "pipeline", operator: "EQ", value: pipelineId }, { propertyName: "hs_lastmodifieddate", operator: "GTE", value: sinceMs }] }],
+      properties: ["dealname", "dealstage", "pipeline", "amount", "createdate"], sorts: [{ propertyName: "hs_lastmodifieddate", direction: "ASCENDING" }], limit: 100, after,
+    }) });
+    if (!res.ok) throw new Error(`deals search: ${res.status} ${await res.text()}`);
+    const json = await res.json();
+    for (const d of json.results ?? []) deals.push({ id: String(d.id), props: d.properties ?? {}, contactIds: [], lineItemIds: [] });
+    after = json.paging?.next?.after;
+  } while (after);
+
+  // 2. associations per deal (contacts + line items)
+  for (const d of deals) {
+    const res = await fetch(`${BASE}/crm/v3/objects/deals/${d.id}?associations=contacts,line_items`, { headers: headers() });
+    if (!res.ok) continue;
+    const j = await res.json();
+    d.contactIds = (j.associations?.contacts?.results ?? []).map((a: { id?: string; toObjectId?: string }) => String(a.id ?? a.toObjectId));
+    d.lineItemIds = (j.associations?.line_items?.results ?? []).map((a: { id?: string; toObjectId?: string }) => String(a.id ?? a.toObjectId));
+  }
+
+  // 3. batch-read the referenced contacts + line items
+  const contacts = await batchReadContacts([...new Set(deals.flatMap((d) => d.contactIds))]);
+  const items = await batchReadLineItems([...new Set(deals.flatMap((d) => d.lineItemIds))]);
+
+  return deals.map((d) => ({
+    id: d.id, dealname: d.props.dealname ?? null, dealstage: d.props.dealstage ?? null, pipeline: d.props.pipeline ?? null,
+    amount: d.props.amount != null ? Number(d.props.amount) : null, createdate: d.props.createdate ?? null,
+    contact: d.contactIds.length ? contacts.get(d.contactIds[0]) ?? null : null,
+    lineItems: d.lineItemIds.map((id) => items.get(id)).filter(Boolean) as RfqDeal["lineItems"],
+  }));
+}
+
+export type FormSubmission = { submittedAt: string; values: Record<string, string>; pageUrl: string | null };
+
+/** Recent submissions for a form (Forms API), newest first. Caller filters by `since`. */
+export async function fetchFormSubmissions(formGuid: string, limit = 50): Promise<FormSubmission[]> {
+  const res = await fetch(`${BASE}/form-integrations/v1/submissions/forms/${formGuid}?limit=${limit}`, { headers: headers() });
+  if (!res.ok) throw new Error(`form submissions: ${res.status} ${await res.text()}`);
+  const json = await res.json();
+  return (json.results ?? []).map((s: { submittedAt?: number; pageUrl?: string; values?: { name: string; value: string }[] }) => ({
+    submittedAt: s.submittedAt ? new Date(s.submittedAt).toISOString() : "",
+    pageUrl: s.pageUrl ?? null,
+    values: Object.fromEntries((s.values ?? []).map((v) => [v.name, v.value])),
+  }));
+}
