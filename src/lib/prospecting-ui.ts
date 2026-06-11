@@ -37,6 +37,21 @@ export function parseTmas(s: string | null): { chips: { code: string; marker?: s
   return { chips };
 }
 
+/**
+ * Live reviewer nudge to the "Matching TMA SKU" score component. Starts from the skill's
+ * awarded points; each rejected suggestion subtracts one match's worth, each added TMA adds
+ * one, clamped to the component cap. One "match's worth" = base/suggested (or cap/4 when the
+ * skill suggested none). Confirmations don't move the number (they protect against drift).
+ * Returns the skill's base unchanged when there's no reject/add signal.
+ */
+export function tmaAdjustedPoints(
+  { base, weightMax, suggested, rejected, added }: { base: number; weightMax: number; suggested: number; rejected: number; added: number },
+): number {
+  if (!rejected && !added) return base;
+  const unit = suggested > 0 ? base / suggested : weightMax / 4;
+  return Math.max(0, Math.min(weightMax, Math.round(base + (added - rejected) * unit)));
+}
+
 /** "R-05 Pre/Post-IO cohort, L-04 RNA-Seq" → [{code:"R-05", label:"Pre/Post-IO cohort"}, …]. */
 export function parseCaps(s: string | null): { code?: string; label: string }[] {
   if (!s) return [];
