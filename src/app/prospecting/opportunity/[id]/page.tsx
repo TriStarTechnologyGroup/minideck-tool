@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { tierChip, parseCaps } from "@/lib/prospecting-ui";
+import { tierChip, parseCaps, tmaAdjustedPoints } from "@/lib/prospecting-ui";
 import ConvertOpportunity from "../../[id]/convert-opportunity";
-import ScoreBreakdown, { type ScoreComponent, type Feedback } from "./score-breakdown";
+import ScoreBreakdown, { type ScoreComponent, type Feedback, type TmaAdjustment } from "./score-breakdown";
 import CapabilitiesPanel, { type OppCapability } from "./capabilities-panel";
 import DeleteOpportunity from "./delete-opportunity";
 import TmaPanel, { type AddedTma, type CatalogItem } from "./tma-panel";
@@ -71,6 +71,22 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const catalog = (catalogRows ?? []) as CatalogItem[];
   const tmaLinkByTa: Record<string, string> = {};
   for (const r of catalog) if (r.ta_number) tmaLinkByTa[r.ta_number] = r.id;
+
+  // Live nudge: re-weight the "Matching TMA SKU" component from reviewer TMA feedback. Each
+  // rejected suggestion subtracts one match's worth of points; each added TMA adds one;
+  // clamped to the component cap. Feeds the reviewer-adjusted total (the AI score is untouched).
+  let tmaAdjustment: TmaAdjustment = null;
+  const tmaComp = scoreComponents.find((c) => /tma/i.test(c.component));
+  if (tmaComp) {
+    const verdictVals = Object.values(tmaVerdicts);
+    const confirmed = verdictVals.filter((v) => v === "confirmed").length;
+    const rejected = verdictVals.filter((v) => v === "rejected").length;
+    const added = addedTmas.length;
+    if (confirmed || rejected || added) {
+      const adjusted = tmaAdjustedPoints({ base: tmaComp.points, weightMax: tmaComp.weight_max, suggested: cohorts.length, rejected, added });
+      tmaAdjustment = { component: tmaComp.component, base: tmaComp.points, adjusted, confirmed, rejected, added };
+    }
+  }
   const caps = parseCaps(o.suggested_capabilities);
   const totalDonors = cohorts.reduce((s, c) => s + (c.donors ?? 0), 0);
 
@@ -119,7 +135,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
 
       <section>
         <h2 className="mb-2 font-display text-lg font-medium text-ink">Scoring breakdown</h2>
-        <ScoreBreakdown opportunityId={o.id} skillScore={o.fit_score} components={scoreComponents} feedback={feedback} />
+        <ScoreBreakdown opportunityId={o.id} skillScore={o.fit_score} components={scoreComponents} feedback={feedback} tmaAdjustment={tmaAdjustment} />
       </section>
 
       <section>

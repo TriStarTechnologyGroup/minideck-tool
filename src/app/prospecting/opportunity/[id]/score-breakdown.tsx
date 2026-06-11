@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 export type ScoreComponent = { id: string; component: string; weight_max: number; points: number; note: string | null };
 export type Feedback = { reviewer_score: number | null; component_points: Record<string, number> | null; verdict: string | null; notes: string | null } | null;
+// Live nudge to the "Matching TMA SKU" component derived from reviewer TMA confirm/reject/add.
+export type TmaAdjustment = { component: string; base: number; adjusted: number; confirmed: number; rejected: number; added: number } | null;
 
 const VERDICTS = [
   { v: "", label: "— verdict —" }, { v: "agree", label: "Agree" },
@@ -12,13 +14,20 @@ const VERDICTS = [
 ];
 
 export default function ScoreBreakdown({
-  opportunityId, skillScore, components, feedback,
+  opportunityId, skillScore, components, feedback, tmaAdjustment,
 }: {
-  opportunityId: string; skillScore: number | null; components: ScoreComponent[]; feedback: Feedback;
+  opportunityId: string; skillScore: number | null; components: ScoreComponent[]; feedback: Feedback; tmaAdjustment?: TmaAdjustment;
 }) {
   const router = useRouter();
-  const initPts = (c: ScoreComponent) => feedback?.component_points?.[c.component] ?? c.points;
-  const [pts, setPts] = useState<Record<string, number>>(() => Object.fromEntries(components.map((c) => [c.component, initPts(c)])));
+  // Effective baseline per component: a manual reviewer override wins; else the live TMA-derived
+  // adjustment for the matching component; else the skill's points.
+  const baseline = (c: ScoreComponent) => {
+    const manual = feedback?.component_points?.[c.component];
+    if (manual != null) return manual;
+    if (tmaAdjustment && c.component === tmaAdjustment.component) return tmaAdjustment.adjusted;
+    return c.points;
+  };
+  const [pts, setPts] = useState<Record<string, number>>(() => Object.fromEntries(components.map((c) => [c.component, baseline(c)])));
   const [verdict, setVerdict] = useState(feedback?.verdict ?? "");
   const [notes, setNotes] = useState(feedback?.notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -27,8 +36,9 @@ export default function ScoreBreakdown({
   const skillTotal = components.reduce((s, c) => s + c.points, 0);
   const reviewerTotal = useMemo(() => components.reduce((s, c) => s + (pts[c.component] ?? c.points), 0), [components, pts]);
   const dirty = useMemo(
-    () => components.some((c) => (pts[c.component] ?? c.points) !== c.points) || verdict !== (feedback?.verdict ?? "") || notes !== (feedback?.notes ?? ""),
-    [components, pts, verdict, notes, feedback],
+    () => components.some((c) => (pts[c.component] ?? baseline(c)) !== baseline(c)) || verdict !== (feedback?.verdict ?? "") || notes !== (feedback?.notes ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [components, pts, verdict, notes, feedback, tmaAdjustment],
   );
 
   async function save() {
@@ -68,9 +78,15 @@ export default function ScoreBreakdown({
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {components.map((c) => (
+          {components.map((c) => {
+            const adj = tmaAdjustment && c.component === tmaAdjustment.component && feedback?.component_points?.[c.component] == null && (tmaAdjustment.rejected || tmaAdjustment.added) ? tmaAdjustment : null;
+            const adjParts = adj ? [adj.rejected ? `−${adj.rejected} rejected` : "", adj.added ? `+${adj.added} added` : ""].filter(Boolean).join(", ") : "";
+            return (
             <tr key={c.id} className="align-middle">
-              <td className="py-2 pr-3 text-ink">{c.component}{c.note && <div className="text-[0.7rem] text-ink-muted">{c.note}</div>}</td>
+              <td className="py-2 pr-3 text-ink">
+                {c.component}{c.note && <div className="text-[0.7rem] text-ink-muted">{c.note}</div>}
+                {adj && <div className="text-[0.7rem] text-link">↳ TMA feedback ({adjParts}) → {adj.adjusted} <span className="text-ink-muted">(skill {adj.base})</span></div>}
+              </td>
               <td className="px-3 py-2 text-ink-muted">{c.weight_max}</td>
               <td className="px-3 py-2 text-ink-muted">{c.points}</td>
               <td className="px-3 py-2">
@@ -82,7 +98,8 @@ export default function ScoreBreakdown({
                   className="w-16 rounded-sm border border-line-strong bg-surface px-2 py-1 text-xs text-ink" />
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
 
