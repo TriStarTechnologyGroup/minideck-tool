@@ -9,7 +9,7 @@ type Admin = ReturnType<typeof createAdminClient>;
 // one product identity. App is the source of truth; reconcile key = app_catalog_id (uuid).
 
 type TmaRow = { id: string; sku: string | null; name: string | null; short_description: string | null; hubspot_product_id: string | null };
-type CapRow = { id: string; capability_id: string | null; name: string | null; description: string | null; hubspot_product_id: string | null };
+type CapRow = { id: string; capability_id: string | null; name: string | null; description: string | null; specs?: string | null; hubspot_product_id: string | null };
 
 // `resolvedId` (bulk path): the caller already looked the product up in the product index, so
 // upsert PATCHes it (or creates) without searching. Omit it (per-item edits) to search-and-adopt.
@@ -34,7 +34,7 @@ export async function syncCapabilityProduct(admin: Admin, row: CapRow, resolved?
   const productId = await upsertProduct({
     appCatalogId: `cap:${row.id}`,
     name: row.name || row.capability_id || `Capability ${row.id.slice(0, 8)}`,
-    description: row.description,
+    description: [row.specs, row.description].filter(Boolean).join(" — ") || null,
     sku: row.capability_id,
     hubspotProductId: resolved ? resolved.resolvedId : row.hubspot_product_id,
     skipSearch: !!resolved,

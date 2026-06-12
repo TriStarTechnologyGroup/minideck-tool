@@ -10,8 +10,8 @@ export default async function CatalogCapabilitiesPage() {
   const supabase = await createClient();
   const { data: caps } = await supabase
     .from("capabilities")
-    .select("id, capability_id, name, category, description, hubspot_product_id")
-    .order("capability_id");
+    .select("id, capability_id, name, category, description, specs, matching_signal, solid_liquid, data_sheet, active, position, hubspot_product_id")
+    .order("position");
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
