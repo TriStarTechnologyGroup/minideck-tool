@@ -9,6 +9,7 @@ const LINKS: [string, string][] = [
   ["/campaigns", "Campaigns"],
   ["/inbound", "Inbound"],
   ["/prospecting", "Prospecting"],
+  ["/companies", "Companies"],
   ["/catalog", "Catalog"],
 ];
 const ADMIN_LINKS: [string, string][] = [
