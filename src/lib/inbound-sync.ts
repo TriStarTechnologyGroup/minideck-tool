@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchRfqDeals, fetchFormSubmissions, isHubspotConfigured, type RfqDeal } from "@/lib/hubspot";
 import { classifyOrg, classifyByDomain, type OrgCategory } from "@/lib/classify";
+import { draftOpportunityForInquiry } from "@/lib/inbound-opportunity";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -35,16 +36,25 @@ async function resolveClassification(opts: { academicPipeline?: boolean; company
 /** Upsert one inquiry by (hubspot_object_type, hubspot_object_id). HubSpot-sourced fields refresh
  *  on every sync; reviewer-owned fields (status, classification, company_id) are set on insert
  *  only — never clobbered. `classify` runs only for genuinely new rows (bounds AI cost). */
-async function upsertInquiry(admin: Admin, row: Record<string, unknown>, classify: () => Promise<{ classification: OrgCategory; classification_reason: string | null; prospect_eligible: boolean }>, result: InboundSyncResult) {
-  const { data: ex } = await admin.from("inbound_inquiries").select("id").eq("hubspot_object_type", row.hubspot_object_type as string).eq("hubspot_object_id", row.hubspot_object_id as string).maybeSingle();
+async function upsertInquiry(admin: Admin, row: Record<string, unknown>, classify: () => Promise<{ classification: OrgCategory; classification_reason: string | null; prospect_eligible: boolean }>, result: InboundSyncResult): Promise<string | null> {
+  const { data: ex } = await admin.from("inbound_inquiries").select("id, opportunity_id").eq("hubspot_object_type", row.hubspot_object_type as string).eq("hubspot_object_id", row.hubspot_object_id as string).maybeSingle();
   if (ex?.id) {
     const { error } = await admin.from("inbound_inquiries").update({ ...row, synced_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ex.id);
     if (error) result.errors.push(`update ${row.hubspot_object_id}: ${error.message}`); else result.updated++;
-  } else {
-    const c = await classify();
-    const { error } = await admin.from("inbound_inquiries").insert({ ...row, ...c, status: "classified" });
-    if (error) result.errors.push(`insert ${row.hubspot_object_id}: ${error.message}`); else result.inserted++;
+    return ex.opportunity_id ? null : (ex.id as string); // draft if it doesn't have one yet (backfill)
   }
+  const c = await classify();
+  const { data: ins, error } = await admin.from("inbound_inquiries").insert({ ...row, ...c, status: "classified" }).select("id").single();
+  if (error) { result.errors.push(`insert ${row.hubspot_object_id}: ${error.message}`); return null; }
+  result.inserted++;
+  return ins.id as string; // newly inserted → draft an opportunity shell
+}
+
+// Draft the opportunity for a newly-inserted inquiry; best-effort (don't fail the whole sync).
+async function draft(admin: Admin, id: string | null, row: Record<string, unknown>, result: InboundSyncResult) {
+  if (!id) return;
+  try { await draftOpportunityForInquiry(admin, id, row as Parameters<typeof draftOpportunityForInquiry>[2]); }
+  catch (e) { result.errors.push(`draft opp ${id}: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
 function dealRow(d: RfqDeal, pipeline: "pharma" | "academic") {
@@ -92,7 +102,8 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
         company_name: v.company ?? null, company_domain: domainOf(email), contact_name: [v.firstname, v.lastname].filter(Boolean).join(" ") || null, contact_email: email,
         subject: v.how_can_we_help_you_ ?? null, message: v.message ?? null, requested_products: null, pipeline: null, stage: null, amount: null, received_at: s.submittedAt,
       };
-      await upsertInquiry(admin, row, () => resolveClassification({ company: v.company, domain: domainOf(email), message: v.message }), result);
+      const newId = await upsertInquiry(admin, row, () => resolveClassification({ company: v.company, domain: domainOf(email), message: v.message }), result);
+      await draft(admin, newId, row, result);
       result.forms++;
     }
   } catch (e) { result.errors.push(`forms: ${e instanceof Error ? e.message : String(e)}`); }
@@ -101,7 +112,7 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
   for (const [pid, kind] of [[PHARMA_PIPELINE, "pharma"], [ACADEMIC_PIPELINE, "academic"]] as const) {
     try {
       const deals = await fetchRfqDeals(pid, rfqSince);
-      for (const d of deals) { const { row, classify } = dealRow(d, kind); await upsertInquiry(admin, row, classify, result); result.rfq++; }
+      for (const d of deals) { const { row, classify } = dealRow(d, kind); const newId = await upsertInquiry(admin, row, classify, result); await draft(admin, newId, row, result); result.rfq++; }
     } catch (e) { result.errors.push(`rfq ${kind}: ${e instanceof Error ? e.message : String(e)}`); }
   }
 

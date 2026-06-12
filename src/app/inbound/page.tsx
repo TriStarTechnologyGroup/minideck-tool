@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import SyncButton from "./sync-button";
@@ -9,7 +10,7 @@ type Product = { sku: string | null; name: string | null; quantity: number | nul
 type Inquiry = {
   id: string; source: "rfq" | "contact_form"; company_name: string | null; contact_name: string | null; contact_email: string | null;
   subject: string | null; message: string | null; classification: string; prospect_eligible: boolean; status: string;
-  requested_products: Product[] | null; amount: number | null; received_at: string | null;
+  requested_products: Product[] | null; amount: number | null; received_at: string | null; opportunity_id: string | null;
 };
 
 const CLASS_LABEL: Record<string, string> = { industry: "Industry", academia: "Academia", non_profit: "Non-profit", government: "Government", other: "Other", unknown: "Unclassified" };
@@ -26,7 +27,7 @@ export default async function InboundPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("inbound_inquiries")
-    .select("id, source, company_name, contact_name, contact_email, subject, message, classification, prospect_eligible, status, requested_products, amount, received_at")
+    .select("id, source, company_name, contact_name, contact_email, subject, message, classification, prospect_eligible, status, requested_products, amount, received_at, opportunity_id")
     .order("received_at", { ascending: false })
     .limit(500);
   const rows = (data ?? []) as Inquiry[];
@@ -62,6 +63,7 @@ export default async function InboundPage() {
                 <th className="px-4 py-2.5 font-medium">Company</th>
                 <th className="px-4 py-2.5 font-medium">Classification</th>
                 <th className="px-4 py-2.5 font-medium">Request</th>
+                <th className="px-4 py-2.5 font-medium">Opportunity</th>
                 <th className="px-4 py-2.5 font-medium">Status</th>
               </tr>
             </thead>
@@ -85,6 +87,7 @@ export default async function InboundPage() {
                       {products.length > 0 && <div className="text-xs text-ink-muted">{products.length} item{products.length === 1 ? "" : "s"}{products[0]?.sku ? ` · ${products.slice(0, 3).map((p) => p.sku).filter(Boolean).join(", ")}${products.length > 3 ? "…" : ""}` : ""}{r.amount != null ? ` · $${r.amount.toLocaleString()}` : ""}</div>}
                       {!products.length && r.message && <div className="line-clamp-2 max-w-md text-xs text-ink-muted">{r.message}</div>}
                     </td>
+                    <td className="px-4 py-3">{r.opportunity_id ? <Link href={`/prospecting/opportunity/${r.opportunity_id}`} className="text-xs font-medium text-link hover:underline">View ↗</Link> : <span className="text-xs text-ink-muted/60">—</span>}</td>
                     <td className="px-4 py-3"><span className="chip bg-surface-muted text-nav capitalize">{r.status.replace("_", " ")}</span></td>
                   </tr>
                 );
