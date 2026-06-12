@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getProfile } from "@/lib/auth";
 import MobileMenu from "./mobile-menu";
-import { NavDropdown, NavLink, AccountMenu } from "./nav-menus";
+import { NavDropdown, AccountMenu } from "./nav-menus";
 
 const RESEARCH_NAV = [
   { href: "/prospecting", label: "Prospecting" },
@@ -11,6 +11,7 @@ const SALES_NAV = [
   { href: "/inbound", label: "Inbound" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/decks", label: "Decks" },
+  { href: "/leads", label: "Leads" },
 ];
 const CATALOG_NAV = [
   { href: "/catalog/tma", label: "TMAs" },
@@ -44,7 +45,6 @@ export default async function AppHeader() {
             <NavDropdown label="Research" items={RESEARCH_NAV} />
             <NavDropdown label="Sales" items={SALES_NAV} />
             <NavDropdown label="Catalog" items={CATALOG_NAV} />
-            <NavLink href="/leads" label="Leads" />
             {isAdmin && <NavDropdown label="Admin" items={ADMIN_NAV} />}
           </nav>
         </div>
