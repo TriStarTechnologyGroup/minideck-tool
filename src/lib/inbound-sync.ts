@@ -69,23 +69,22 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
   if (!isHubspotConfigured()) throw new Error("HubSpot not configured");
   const result: InboundSyncResult = { rfq: 0, forms: 0, inserted: 0, updated: 0, errors: [] };
 
-  // Incremental window: newest received_at we already have, else a short lookback on first run.
-  const { data: latest } = await admin.from("inbound_inquiries").select("received_at").order("received_at", { ascending: false }).limit(1).maybeSingle();
-  const since = latest?.received_at ?? new Date(Date.now() - DEFAULT_LOOKBACK_DAYS * 86400_000).toISOString();
+  // PER-SOURCE incremental window — forms must not be gated behind the newest *deal's* time
+  // (deals are frequent, forms rare). Default to a short lookback on first run.
+  const fallback = new Date(Date.now() - DEFAULT_LOOKBACK_DAYS * 86400_000).toISOString();
+  const sinceFor = async (source: string) => {
+    const { data } = await admin.from("inbound_inquiries").select("received_at").eq("source", source).order("received_at", { ascending: false }).limit(1).maybeSingle();
+    return data?.received_at ?? fallback;
+  };
+  const rfqSince = await sinceFor("rfq");
+  const formSince = await sinceFor("contact_form");
 
-  // RFQ deals — both pipelines (pipeline drives the gate).
-  for (const [pid, kind] of [[PHARMA_PIPELINE, "pharma"], [ACADEMIC_PIPELINE, "academic"]] as const) {
-    try {
-      const deals = await fetchRfqDeals(pid, since);
-      for (const d of deals) { const { row, classify } = dealRow(d, kind); await upsertInquiry(admin, row, classify, result); result.rfq++; }
-    } catch (e) { result.errors.push(`rfq ${kind}: ${e instanceof Error ? e.message : String(e)}`); }
-  }
-
-  // Contact-form submissions — classified in-app (not pipeline-bound).
+  // Contact-form submissions FIRST — few + high-value, so they always sync even if the deal
+  // loop is heavy. Classified in-app (not pipeline-bound).
   try {
     const subs = await fetchFormSubmissions(CONTACT_FORM_GUID);
     for (const s of subs) {
-      if (!s.submittedAt || s.submittedAt < since) continue;
+      if (!s.submittedAt || s.submittedAt < formSince) continue;
       const v = s.values;
       const email = v.email ?? null;
       const row = {
@@ -97,6 +96,14 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
       result.forms++;
     }
   } catch (e) { result.errors.push(`forms: ${e instanceof Error ? e.message : String(e)}`); }
+
+  // RFQ deals — both pipelines. Academic pipeline → academia; Pharma needs real classification.
+  for (const [pid, kind] of [[PHARMA_PIPELINE, "pharma"], [ACADEMIC_PIPELINE, "academic"]] as const) {
+    try {
+      const deals = await fetchRfqDeals(pid, rfqSince);
+      for (const d of deals) { const { row, classify } = dealRow(d, kind); await upsertInquiry(admin, row, classify, result); result.rfq++; }
+    } catch (e) { result.errors.push(`rfq ${kind}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
 
   return result;
 }
