@@ -36,6 +36,9 @@ export async function POST(req: NextRequest) {
     company_type: company.type,
     verified: company.verified,
     opportunity_id: opportunity_id ?? null,
+    // Flattened for easy Clay mapping (feed straight into Find People), alongside the structured roles.
+    title_keywords: [...new Set((roles ?? []).flatMap((r) => (r.title_keywords ?? "").split(",").map((s: string) => s.trim()).filter(Boolean)))].join(", "),
+    functions: (roles ?? []).map((r) => r.function).filter(Boolean).join(", "),
     target_roles: (roles ?? []).map((r) => ({ function: r.function, title_keywords: r.title_keywords, seniority_floor: r.seniority_floor })),
     callback_url: `${serverEnv.APP_BASE_URL}/api/contacts/clay-webhook`,
   };
