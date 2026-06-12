@@ -18,15 +18,16 @@ const uniqVals = (list: Tma[], sel: (t: Tma) => string | null) => [...new Set(li
 const ic = "w-full rounded-sm border border-line-strong bg-surface px-2 py-1 text-sm text-ink";
 const fc = "w-full rounded-sm border border-line-strong bg-surface px-2 py-1 text-xs font-normal normal-case tracking-normal text-ink";
 
-export default function CatalogManager({ tmas, capabilities, isAdmin }: { tmas: Tma[]; capabilities: Capability[]; isAdmin: boolean }) {
-  const [tab, setTab] = useState<"tmas" | "capabilities">("tmas");
+export default function CatalogManager({ tmas, capabilities, isAdmin, only }: { tmas: Tma[]; capabilities: Capability[]; isAdmin: boolean; only?: "tmas" | "capabilities" }) {
+  const [tab, setTab] = useState<"tmas" | "capabilities">(only ?? "tmas");
+  const active = only ?? tab;
   const synced = tmas.filter((t) => t.hubspot_product_id).length + capabilities.filter((c) => c.hubspot_product_id).length;
   const total = tmas.length + capabilities.length;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line">
         <div className="flex gap-1">
-          {(["tmas", "capabilities"] as const).map((t) => (
+          {!only && (["tmas", "capabilities"] as const).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)}
               className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t ? "border-primary text-ink" : "border-transparent text-ink-muted hover:text-ink"}`}>
               {t === "tmas" ? `Tissue microarrays (${tmas.length})` : `Capabilities (${capabilities.length})`}
@@ -35,7 +36,7 @@ export default function CatalogManager({ tmas, capabilities, isAdmin }: { tmas: 
         </div>
         {isAdmin && <SyncHubspot synced={synced} total={total} />}
       </div>
-      {tab === "tmas" ? <TmaManager tmas={tmas} isAdmin={isAdmin} /> : <CapabilitiesManager capabilities={capabilities} isAdmin={isAdmin} />}
+      {active === "tmas" ? <TmaManager tmas={tmas} isAdmin={isAdmin} /> : <CapabilitiesManager capabilities={capabilities} isAdmin={isAdmin} />}
     </div>
   );
 }

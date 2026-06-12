@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { getProfile } from "@/lib/auth";
 import MobileMenu from "./mobile-menu";
-import { NavDropdown, AccountMenu } from "./nav-menus";
+import { NavDropdown, NavLink, AccountMenu } from "./nav-menus";
 
-const PRIMARY_NAV = [
-  { href: "/decks", label: "Decks" },
-  { href: "/leads", label: "Leads" },
-  { href: "/campaigns", label: "Campaigns" },
-  { href: "/inbound", label: "Inbound" },
+const RESEARCH_NAV = [
   { href: "/prospecting", label: "Prospecting" },
   { href: "/companies", label: "Companies" },
-  { href: "/catalog", label: "Catalog" },
+];
+const SALES_NAV = [
+  { href: "/inbound", label: "Inbound" },
+  { href: "/campaigns", label: "Campaigns" },
+  { href: "/decks", label: "Decks" },
+];
+const CATALOG_NAV = [
+  { href: "/catalog/tma", label: "TMAs" },
+  { href: "/catalog/capabilities", label: "Capabilities" },
 ];
 const ADMIN_NAV = [
   { href: "/admin/users", label: "Users" },
@@ -37,11 +41,10 @@ export default async function AppHeader() {
             />
           </Link>
           <nav className="hidden items-center gap-5 text-sm lg:flex">
-            {PRIMARY_NAV.map((i) => (
-              <Link key={i.href} href={i.href} className="font-medium text-white/90 transition-colors hover:text-primary">
-                {i.label}
-              </Link>
-            ))}
+            <NavDropdown label="Research" items={RESEARCH_NAV} />
+            <NavDropdown label="Sales" items={SALES_NAV} />
+            <NavDropdown label="Catalog" items={CATALOG_NAV} />
+            <NavLink href="/leads" label="Leads" />
             {isAdmin && <NavDropdown label="Admin" items={ADMIN_NAV} />}
           </nav>
         </div>

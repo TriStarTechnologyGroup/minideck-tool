@@ -3,25 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 
-const LINKS: [string, string][] = [
-  ["/decks", "Decks"],
-  ["/leads", "Leads"],
-  ["/campaigns", "Campaigns"],
-  ["/inbound", "Inbound"],
-  ["/prospecting", "Prospecting"],
-  ["/companies", "Companies"],
-  ["/catalog", "Catalog"],
+type Group = { label: string; items: [string, string][] };
+const GROUPS: Group[] = [
+  { label: "Research", items: [["/prospecting", "Prospecting"], ["/companies", "Companies"]] },
+  { label: "Sales", items: [["/inbound", "Inbound"], ["/campaigns", "Campaigns"], ["/decks", "Decks"]] },
+  { label: "Catalog", items: [["/catalog/tma", "TMAs"], ["/catalog/capabilities", "Capabilities"]] },
+  { label: "", items: [["/leads", "Leads"]] },
 ];
-const ADMIN_LINKS: [string, string][] = [
-  ["/admin/users", "Users"],
-  ["/admin/audit", "Audit"],
-  ["/admin/scoring", "Scoring"],
-];
+const ADMIN_GROUP: Group = { label: "Admin", items: [["/admin/users", "Users"], ["/admin/audit", "Audit"], ["/admin/scoring", "Scoring"]] };
 
 // Hamburger nav for narrow screens (below lg, where the inline nav is hidden).
 export default function MobileMenu({ isAdmin, email }: { isAdmin: boolean; email: string }) {
   const [open, setOpen] = useState(false);
-  const links = isAdmin ? [...LINKS, ...ADMIN_LINKS] : LINKS;
+  const groups = isAdmin ? [...GROUPS, ADMIN_GROUP] : GROUPS;
 
   return (
     <div className="relative lg:hidden">
@@ -41,10 +35,15 @@ export default function MobileMenu({ isAdmin, email }: { isAdmin: boolean; email
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />
           <nav className="absolute right-0 z-40 mt-2 w-52 overflow-hidden rounded-md border border-line bg-surface py-1 shadow-lg">
             <p className="truncate border-b border-line px-4 py-2 text-xs text-ink-muted">{email}</p>
-            {links.map(([href, label]) => (
-              <Link key={href} href={href} onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-ink hover:bg-surface-subtle">
-                {label}
-              </Link>
+            {groups.map((g, gi) => (
+              <div key={g.label || gi} className={gi > 0 ? "border-t border-line pt-1" : ""}>
+                {g.label && <p className="px-4 pt-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-ink-muted/70">{g.label}</p>}
+                {g.items.map(([href, label]) => (
+                  <Link key={href} href={href} onClick={() => setOpen(false)} className="block px-4 py-2 text-sm text-ink hover:bg-surface-subtle">
+                    {label}
+                  </Link>
+                ))}
+              </div>
             ))}
             <form action="/auth/signout" method="post" className="border-t border-line">
               <button type="submit" className="block w-full px-4 py-2 text-left text-sm text-ink hover:bg-surface-subtle">Sign out</button>
