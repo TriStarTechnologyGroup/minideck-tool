@@ -18,6 +18,9 @@ const patchInput = z.object({
   owner: z.string().trim().nullable().optional(),
   notes: z.string().nullable().optional(),
   relevant: z.boolean().optional(),
+  verified: z.boolean().optional(),
+  flagged_for_removal: z.boolean().optional(),
+  flag_reason: z.string().trim().nullable().optional(),
 });
 
 // PATCH /api/companies/[id] — edit a company (signed-in users). Primarily used to set/correct the
@@ -33,11 +36,23 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
 
   const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = { ...parsed.data, updated_at: now };
+  // Stamp the verification + flag metadata server-side.
+  if (parsed.data.verified !== undefined) {
+    patch.verified_at = parsed.data.verified ? now : null;
+    patch.verified_by = parsed.data.verified ? guard.profile.id : null;
+  }
+  if (parsed.data.flagged_for_removal !== undefined) {
+    patch.flagged_at = parsed.data.flagged_for_removal ? now : null;
+    if (!parsed.data.flagged_for_removal) patch.flag_reason = null;
+  }
+
   const { data, error } = await admin
     .from("companies")
-    .update({ ...parsed.data, updated_at: new Date().toISOString() })
+    .update(patch)
     .eq("id", id)
-    .select("id, name, type, domain, industry, owner, relevant")
+    .select("id, name, type, domain, industry, owner, relevant, verified, flagged_for_removal")
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   if (!data) return NextResponse.json({ error: "Company not found" }, { status: 404 });

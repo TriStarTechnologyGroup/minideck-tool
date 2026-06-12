@@ -12,6 +12,7 @@ type Opp = {
   company_id: string | null;
   company_name: string;
   company_type: CompanyType;
+  company_verified: boolean;
   asset_name: string;
   modality: string | null;
   target: string | null;
@@ -33,14 +34,14 @@ export default async function ProspectingPage() {
       .from("opportunities")
       .select("id, company_id, company_name, asset_name, modality, target, phase, fit_score, fit_tier, proprietary, matched_tma_skus, suggested_capabilities, run_label")
       .limit(500),
-    supabase.from("companies").select("id, type").limit(5000),
+    supabase.from("companies").select("id, type, verified").limit(5000),
   ]);
 
-  const typeById = new Map((companyRows ?? []).map((c) => [c.id as string, (c.type as CompanyType) ?? NEEDS_TYPE]));
-  const opps = ((data ?? []) as Omit<Opp, "company_type">[]).map((o) => ({
-    ...o,
-    company_type: (o.company_id ? typeById.get(o.company_id) : undefined) ?? NEEDS_TYPE,
-  })) as Opp[];
+  const companyById = new Map((companyRows ?? []).map((c) => [c.id as string, { type: (c.type as CompanyType) ?? NEEDS_TYPE, verified: !!c.verified }]));
+  const opps = ((data ?? []) as Omit<Opp, "company_type" | "company_verified">[]).map((o) => {
+    const co = o.company_id ? companyById.get(o.company_id) : undefined;
+    return { ...o, company_type: co?.type ?? NEEDS_TYPE, company_verified: co?.verified ?? false };
+  }) as Opp[];
   // Proprietary first, then by fit score (nulls last).
   const ranked = [...opps].sort((a, b) => {
     if (isProprietary(a.proprietary) !== isProprietary(b.proprietary)) return isProprietary(a.proprietary) ? -1 : 1;

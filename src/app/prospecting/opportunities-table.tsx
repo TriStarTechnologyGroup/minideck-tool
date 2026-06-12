@@ -6,7 +6,7 @@ import { tierChip, tierRank, isProprietary, railVar, parseTmas, parseCaps } from
 import { COMPANY_TYPES, DEFAULT_TYPE_FILTER, TYPE_CHIP, type CompanyType } from "@/lib/company-types";
 
 type Opp = {
-  id: string; company_id: string | null; company_name: string; company_type: CompanyType; asset_name: string;
+  id: string; company_id: string | null; company_name: string; company_type: CompanyType; company_verified: boolean; asset_name: string;
   modality: string | null; target: string | null; phase: string | null; fit_score: number | null;
   fit_tier: string | null; proprietary: string | null; matched_tma_skus: string | null; suggested_capabilities: string | null;
 };
@@ -18,8 +18,10 @@ export default function OpportunitiesTable({ opps }: { opps: Opp[] }) {
   const [f, setF] = useState(EMPTY);
   const set = (k: keyof typeof EMPTY, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [types, setTypes] = useState<Set<CompanyType>>(new Set(DEFAULT_TYPE_FILTER));
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
   const toggleType = (t: CompanyType) => setTypes((s) => { const n = new Set(s); if (n.has(t)) n.delete(t); else n.add(t); return n; });
   const typeCounts = useMemo(() => { const m = new Map<CompanyType, number>(); opps.forEach((o) => m.set(o.company_type, (m.get(o.company_type) ?? 0) + 1)); return m; }, [opps]);
+  const verifiedCount = useMemo(() => opps.filter((o) => o.company_verified).length, [opps]);
 
   const companies = useMemo(() => {
     const m = new Map<string, string>();
@@ -31,6 +33,7 @@ export default function OpportunitiesTable({ opps }: { opps: Opp[] }) {
 
   const has = (s: string | null, q: string) => !q.trim() || (s ?? "").toLowerCase().includes(q.trim().toLowerCase());
   const filtered = useMemo(() => opps.filter((o) => {
+    if (verifiedOnly && !o.company_verified) return false;
     if (types.size > 0 && !types.has(o.company_type)) return false;
     if (f.company !== "all" && (o.company_id ?? o.company_name) !== f.company) return false;
     if (f.modality !== "all" && o.modality !== f.modality) return false;
@@ -38,7 +41,7 @@ export default function OpportunitiesTable({ opps }: { opps: Opp[] }) {
     if (f.tier !== "all" && tierRank(o.fit_tier) !== Number(f.tier)) return false;
     if (f.minFit && (o.fit_score ?? -1) < Number(f.minFit)) return false;
     return has(o.asset_name, f.asset) && has(o.target, f.target) && has(o.matched_tma_skus, f.tma) && has(o.suggested_capabilities, f.caps);
-  }), [opps, f, types]);
+  }), [opps, f, types, verifiedOnly]);
 
   const active = JSON.stringify(f) !== JSON.stringify(EMPTY);
 
@@ -56,6 +59,9 @@ export default function OpportunitiesTable({ opps }: { opps: Opp[] }) {
       })}
       {types.size > 0 ? <button type="button" className="text-xs text-link hover:underline" onClick={() => setTypes(new Set())}>show all</button>
                       : <button type="button" className="text-xs text-link hover:underline" onClick={() => setTypes(new Set(DEFAULT_TYPE_FILTER))}>default</button>}
+      <span className="mx-1 h-4 w-px bg-line" />
+      <button type="button" onClick={() => setVerifiedOnly((v) => !v)}
+        className={`chip ${verifiedOnly ? "bg-emerald-600 text-white" : "bg-surface-muted text-ink-muted/70"}`}>✓ Verified <span className="ml-1 opacity-70">{verifiedCount}</span></button>
     </div>
     <div className="card overflow-x-auto">
       <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-xs text-ink-muted">
