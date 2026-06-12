@@ -116,5 +116,15 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
     } catch (e) { result.errors.push(`rfq ${kind}: ${e instanceof Error ? e.message : String(e)}`); }
   }
 
+  // Backfill pass — draft an opportunity shell for ANY inquiry still missing one. The HubSpot window
+  // only re-fetches recently-modified objects, so historical inquiries would otherwise never get a
+  // shell; this converges the whole inbox. Idempotent: once linked, a row is skipped next sync.
+  try {
+    const { data: unlinked } = await admin.from("inbound_inquiries")
+      .select("id, source, company_name, company_domain, subject, message, requested_products")
+      .is("opportunity_id", null);
+    for (const inq of unlinked ?? []) await draft(admin, inq.id as string, inq as Record<string, unknown>, result);
+  } catch (e) { result.errors.push(`backfill: ${e instanceof Error ? e.message : String(e)}`); }
+
   return result;
 }
