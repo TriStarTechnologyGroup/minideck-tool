@@ -6,6 +6,7 @@ import { NavDropdown, AccountMenu } from "./nav-menus";
 const RESEARCH_NAV = [
   { href: "/prospecting", label: "Prospecting" },
   { href: "/companies", label: "Companies" },
+  { href: "/research/roles", label: "Decision-maker roles" },
 ];
 const SALES_NAV = [
   { href: "/inbound", label: "Inbound" },
