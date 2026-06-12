@@ -34,6 +34,11 @@ const schema = z.object({
   // Anthropic API key — in-app classification + reply drafting for inbound inquiries.
   // Blank → in-app AI disabled (contact-form orgs stay 'unknown' until set).
   ANTHROPIC_API_KEY: z.string().default(""),
+  // Clay enrichment (Phase C). CLAY_INTAKE_WEBHOOK_URL = the app POSTs scope requests TO Clay (the
+  // table's webhook source URL). CLAY_WEBHOOK_SECRET = Bearer the app requires on Clay's callback
+  // into /api/contacts/clay-webhook. Both blank → Clay enrichment disabled.
+  CLAY_INTAKE_WEBHOOK_URL: z.string().default(""),
+  CLAY_WEBHOOK_SECRET: z.string().default(""),
   // Public values are also readable server-side
   NEXT_PUBLIC_SUPABASE_URL: z.string().default(""),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().default(""),
