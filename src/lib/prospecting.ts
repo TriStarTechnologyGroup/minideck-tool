@@ -253,6 +253,8 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
     const capabilityRows: Record<string, unknown>[] = [];
     // Track which keys arrived per company, so `replace` can prune the rest.
     const incomingByCompany = new Map<string, Set<string>>();
+    // Companies that got a real (non-inbound) opportunity this run → bump last_prospected_at.
+    const prospectedCompanies = new Set<string>();
 
     for (const { company_hubspot_id, asset_key: explicitKey, external_id, cohorts, trials, score_components, capabilities, ...o } of payload.opportunities) {
       const company_id = resolve({ company_hubspot_id, company_name: o.company_name });
@@ -262,6 +264,7 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
         const set = incomingByCompany.get(company_id) ?? new Set<string>();
         set.add(key);
         incomingByCompany.set(company_id, set);
+        if (row.run_label !== "Inbound") prospectedCompanies.add(company_id);
       }
 
       // Upsert on (company_id, asset_key) — idempotent across reruns and naming drift. Rows
@@ -307,6 +310,12 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
       const { error: cae } = await admin.from("opportunity_capabilities").insert(capabilityRows);
       if (cae) throw new Error(`opportunity_capabilities insert: ${cae.message}`);
       counts.opportunity_capabilities = capabilityRows.length;
+    }
+
+    // Stamp last_prospected_at for companies that received a real (non-inbound) opportunity —
+    // drives the cost-conscious scheduled refresh queue.
+    if (prospectedCompanies.size) {
+      await admin.from("companies").update({ last_prospected_at: new Date().toISOString() }).in("id", [...prospectedCompanies]);
     }
 
     // `replace`: make the run authoritative per company — prune opportunities whose key
