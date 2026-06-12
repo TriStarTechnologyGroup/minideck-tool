@@ -1,12 +1,13 @@
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import ContactsTable, { type ContactRow } from "./contacts-table";
+import ContactSyncActions from "./sync-actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Contacts — Minideck" };
 
 export default async function ContactsPage() {
-  await requireUser();
+  const profile = await requireUser();
   const supabase = await createClient();
   const [{ data: contacts }, { data: companies }] = await Promise.all([
     supabase.from("contacts").select("id, full_name, first_name, last_name, email, position, function, seniority, is_decision_maker, do_not_contact, source, company_id, company").order("full_name").limit(5000),
@@ -28,6 +29,7 @@ export default async function ContactsPage() {
           Enrichment (Clay) + HubSpot two-way sync land next.
         </p>
       </header>
+      {profile.role === "admin" && <ContactSyncActions />}
       <ContactsTable rows={rows} />
     </main>
   );
