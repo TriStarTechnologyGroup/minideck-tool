@@ -361,6 +361,48 @@ export async function batchUpdateCompanies(inputs: { id: string; properties: Rec
   }
 }
 
+// ───────────────────────── Contacts (sync) ─────────────────────────
+
+export type HsContact = { id: string; email: string | null; firstname: string | null; lastname: string | null; jobtitle: string | null; company: string | null };
+
+/** Pull the whole contact library once into lookup maps (id, lowercased email → id). Read-consistent
+ *  list endpoint. Used by the dedup-safe contact sync. */
+export async function fetchContactIndex(): Promise<{ byId: Map<string, HsContact>; byEmail: Map<string, string> }> {
+  const byId = new Map<string, HsContact>();
+  const byEmail = new Map<string, string>();
+  let after: string | undefined;
+  do {
+    const u = new URL(`${BASE}/crm/v3/objects/contacts`);
+    u.searchParams.set("limit", "100");
+    u.searchParams.set("properties", "email,firstname,lastname,jobtitle,company");
+    if (after) u.searchParams.set("after", after);
+    const res = await fetch(u, { headers: headers() });
+    if (!res.ok) throw new Error(`contact index: ${res.status} ${await res.text()}`);
+    const j = await res.json();
+    for (const c of j.results ?? []) {
+      const id = String(c.id), p = c.properties ?? {};
+      byId.set(id, { id, email: p.email ?? null, firstname: p.firstname ?? null, lastname: p.lastname ?? null, jobtitle: p.jobtitle ?? null, company: p.company ?? null });
+      const e = (p.email ?? "").toLowerCase().trim();
+      if (e && !byEmail.has(e)) byEmail.set(e, id);
+    }
+    after = j.paging?.next?.after;
+  } while (after);
+  return { byId, byEmail };
+}
+
+/** Create a HubSpot contact. Returns the new id. */
+export async function createContact(properties: Record<string, string>): Promise<string> {
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts`, { method: "POST", headers: headers(), body: JSON.stringify({ properties }) });
+  if (!res.ok) throw new Error(`contact create: ${res.status} ${await res.text()}`);
+  return String((await res.json()).id);
+}
+
+/** Update a HubSpot contact by id. */
+export async function updateContactById(id: string, properties: Record<string, string>): Promise<void> {
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts/${id}`, { method: "PATCH", headers: headers(), body: JSON.stringify({ properties }) });
+  if (!res.ok) throw new Error(`contact update: ${res.status} ${await res.text()}`);
+}
+
 // ───────────────────────── Inbound reads (RFQ deals + contact forms) ─────────────────────────
 
 export type RfqDeal = {
