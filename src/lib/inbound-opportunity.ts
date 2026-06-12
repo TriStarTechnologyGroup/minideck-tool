@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ingestProspecting } from "@/lib/prospecting";
+import { ingestProspecting, assetKey } from "@/lib/prospecting";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -21,7 +21,9 @@ type DraftInput = {
  * Idempotent; links inbound_inquiries.opportunity_id. Returns the opportunity id.
  */
 export async function draftOpportunityForInquiry(admin: Admin, inquiryId: string, inq: DraftInput): Promise<string | null> {
-  const assetKey = `inbound:${inquiryId}`;
+  // ingestProspecting slugifies asset_key via assetKey() (`:` → `-`), so derive the key through the
+  // SAME normalizer for both the write and the read-back — otherwise the post-ingest lookup misses.
+  const assetKeyValue = assetKey("", `inbound:${inquiryId}`);
   const company = inq.company_name?.trim() || "Unknown (inbound)";
   const cart = (inq.requested_products ?? []).filter((p) => p.sku);
   const skus = cart.map((p) => p.sku as string);
@@ -39,7 +41,7 @@ export async function draftOpportunityForInquiry(admin: Admin, inquiryId: string
     opportunities: [{
       company_name: company,
       asset_name: inq.subject?.trim() || (inq.source === "rfq" ? "Inbound RFQ" : "Inbound inquiry"),
-      asset_key: assetKey,
+      asset_key: assetKeyValue,
       matched_tma_skus: skus.length ? skus.join(" | ") : undefined,
       rationale: inq.message?.trim() || undefined,
       run_label: "Inbound",
@@ -47,7 +49,7 @@ export async function draftOpportunityForInquiry(admin: Admin, inquiryId: string
     }],
   });
 
-  const { data: opp } = await admin.from("opportunities").select("id").eq("asset_key", assetKey).limit(1).maybeSingle();
+  const { data: opp } = await admin.from("opportunities").select("id").eq("asset_key", assetKeyValue).limit(1).maybeSingle();
   if (opp?.id) { await admin.from("inbound_inquiries").update({ opportunity_id: opp.id as string }).eq("id", inquiryId); return opp.id as string; }
   return null;
 }
