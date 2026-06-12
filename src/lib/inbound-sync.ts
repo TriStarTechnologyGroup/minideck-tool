@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchRfqDeals, fetchFormSubmissions, isHubspotConfigured, type RfqDeal } from "@/lib/hubspot";
+import { fetchRfqDeals, fetchFormSubmissions, fetchDealLineItems, isHubspotConfigured, type RfqDeal } from "@/lib/hubspot";
 import { classifyOrg, classifyByDomain, type OrgCategory } from "@/lib/classify";
 import { draftOpportunityForInquiry } from "@/lib/inbound-opportunity";
 
@@ -115,6 +115,25 @@ export async function runInboundSync(admin: Admin): Promise<InboundSyncResult> {
       for (const d of deals) { const { row, classify } = dealRow(d, kind); const newId = await upsertInquiry(admin, row, classify, result); await draft(admin, newId, row, result); result.rfq++; }
     } catch (e) { result.errors.push(`rfq ${kind}: ${e instanceof Error ? e.message : String(e)}`); }
   }
+
+  // Backfill empty RFQ carts — earlier syncs dropped line items (the `line_items` vs `"line items"`
+  // association-key bug), so historical RFQ inquiries stored requested_products = []. Re-fetch the
+  // cart per deal id and re-draft the shell so the requested TMAs land as matched cohorts. Bounded:
+  // only inquiries still missing a cart; once filled, skipped.
+  try {
+    const { data: rfqs } = await admin.from("inbound_inquiries")
+      .select("id, hubspot_object_id, source, company_name, company_domain, subject, message, amount, requested_products")
+      .eq("source", "rfq");
+    for (const inq of rfqs ?? []) {
+      const cart = inq.requested_products as unknown[] | null;
+      if (Array.isArray(cart) && cart.length > 0) continue; // already has its cart
+      const items = await fetchDealLineItems(inq.hubspot_object_id as string);
+      if (!items.length) continue;
+      const { error } = await admin.from("inbound_inquiries").update({ requested_products: items, updated_at: new Date().toISOString() }).eq("id", inq.id);
+      if (error) { result.errors.push(`cart backfill ${inq.hubspot_object_id}: ${error.message}`); continue; }
+      await draft(admin, inq.id as string, { ...inq, requested_products: items } as Record<string, unknown>, result);
+    }
+  } catch (e) { result.errors.push(`cart backfill: ${e instanceof Error ? e.message : String(e)}`); }
 
   // Backfill pass — draft an opportunity shell for ANY inquiry still missing one. The HubSpot window
   // only re-fetches recently-modified objects, so historical inquiries would otherwise never get a

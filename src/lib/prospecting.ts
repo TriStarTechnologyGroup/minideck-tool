@@ -310,12 +310,14 @@ export async function ingestProspecting(admin: Admin, payload: ProspectingPayloa
     }
 
     // `replace`: make the run authoritative per company — prune opportunities whose key
-    // didn't arrive in this payload. Never prune rows a reviewer has given feedback on.
+    // didn't arrive in this payload. Never prune rows a reviewer has given feedback on, and never
+    // prune 'Inbound' shells — they belong to an inquiry, not to a prospecting run, so a normal
+    // company prospecting pass (which auto-runs for industry inbound leads) must not delete them.
     if (mode === "replace") {
       for (const [company_id, keys] of incomingByCompany) {
-        const { data: existing, error: qe } = await admin.from("opportunities").select("id, asset_key").eq("company_id", company_id);
+        const { data: existing, error: qe } = await admin.from("opportunities").select("id, asset_key, run_label").eq("company_id", company_id);
         if (qe) throw new Error(`replace prune query: ${qe.message}`);
-        const stale = (existing ?? []).filter((r) => r.asset_key && !keys.has(r.asset_key as string)).map((r) => r.id as string);
+        const stale = (existing ?? []).filter((r) => r.asset_key && !keys.has(r.asset_key as string) && r.run_label !== "Inbound").map((r) => r.id as string);
         if (!stale.length) continue;
         const { data: fb } = await admin.from("opportunity_feedback").select("opportunity_id").in("opportunity_id", stale);
         const keep = new Set((fb ?? []).map((f) => f.opportunity_id as string));

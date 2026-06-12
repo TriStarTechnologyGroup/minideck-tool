@@ -28,14 +28,28 @@ export async function GET(req: NextRequest) {
   const oppById = new Map((opps ?? []).map((o) => [o.id as string, o]));
   const scored = new Set((comps ?? []).map((c) => c.opportunity_id as string));
 
+  // Which of these inquiries' companies are already prospected? = they have ≥1 NON-inbound
+  // opportunity. The skill uses this to decide whether to also run full-company prospecting for an
+  // eligible (industry) inquiry, per the "auto-prospect not-yet-prospected industry" rule.
+  const companyIds = [...new Set((opps ?? []).map((o) => o.company_id as string).filter(Boolean))];
+  const prospected = new Set<string>();
+  if (companyIds.length) {
+    const { data: other } = await admin.from("opportunities").select("company_id, run_label").in("company_id", companyIds).neq("run_label", "Inbound");
+    for (const o of other ?? []) if (o.company_id) prospected.add(o.company_id as string);
+  }
+
   const queue = (inqs ?? [])
     .filter((i) => i.opportunity_id && !scored.has(i.opportunity_id as string))
     .map((i) => {
       const o = oppById.get(i.opportunity_id as string);
+      const companyId = (o?.company_id as string) ?? null;
       return {
         inquiry_id: i.id, opportunity_id: i.opportunity_id, source: i.source,
         classification: i.classification, prospect_eligible: i.prospect_eligible,
-        company_name: i.company_name, company_domain: i.company_domain,
+        company_id: companyId, company_name: i.company_name, company_domain: i.company_domain,
+        already_prospected: companyId ? prospected.has(companyId) : false,
+        // industry inquiry whose company has no non-inbound opportunities yet → also prospect it.
+        should_prospect_company: !!i.prospect_eligible && !(companyId && prospected.has(companyId)),
         asset_name: o?.asset_name ?? null, asset_key: o?.asset_key ?? null,
         subject: i.subject, message: i.message, requested_products: i.requested_products ?? [],
       };
