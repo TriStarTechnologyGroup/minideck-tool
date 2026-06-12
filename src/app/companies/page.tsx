@@ -11,7 +11,7 @@ export default async function CompaniesPage() {
   const supabase = await createClient();
 
   const [{ data: companies }, { data: oppRows }, { data: inqRows }] = await Promise.all([
-    supabase.from("companies").select("id, name, type, domain, industry, owner, relevant, hubspot_id, country").order("name").limit(5000),
+    supabase.from("companies").select("id, name, type, domain, website, industry, owner, relevant, verified, flagged_for_removal, hubspot_id, country").order("name").limit(5000),
     supabase.from("opportunities").select("company_id").not("company_id", "is", null).limit(10000),
     supabase.from("inbound_inquiries").select("company_id").not("company_id", "is", null).limit(10000),
   ]);
