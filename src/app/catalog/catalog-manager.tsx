@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
-export type Capability = { id: string; capability_id: string | null; name: string; category: string | null; description: string | null; hubspot_product_id: string | null };
+export type Capability = {
+  id: string; capability_id: string | null; name: string; category: string | null; description: string | null;
+  specs: string | null; matching_signal: string | null; solid_liquid: string | null; data_sheet: string | null;
+  active: boolean | null; position: number | null; hubspot_product_id: string | null;
+};
 export type Tma = {
   id: string; sku: string | null; ta_number: string | null; name: string | null; short_description: string | null; hubspot_product_id: string | null;
   description: string | null; categories: string | null; primary_categories: string | null; product_cat: string | null; cancer: string | null;
@@ -65,51 +69,113 @@ function SyncHubspot({ synced, total }: { synced: number; total: number }) {
 }
 
 // ── Capabilities ──────────────────────────────────────────────────────────────
+const CAT_ORDER = ["Biospecimen", "Format", "Data", "Imaging", "Data model", "Lab service", "Cohort service"];
+const catRank = (c: string | null) => { const i = CAT_ORDER.indexOf(c ?? ""); return i === -1 ? 99 : i; };
+
 function CapabilitiesManager({ capabilities, isAdmin }: { capabilities: Capability[]; isAdmin: boolean }) {
   const [adding, setAdding] = useState(false);
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("all");
+  const cats = useMemo(() => [...new Set(capabilities.map((c) => c.category).filter(Boolean) as string[])].sort((a, b) => catRank(a) - catRank(b)), [capabilities]);
+
+  const filtered = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    return capabilities.filter((c) => {
+      if (cat !== "all" && c.category !== cat) return false;
+      if (!n) return true;
+      return [c.capability_id, c.name, c.specs, c.matching_signal, c.description].some((v) => (v ?? "").toLowerCase().includes(n));
+    });
+  }, [capabilities, q, cat]);
+
+  const groups = useMemo(() => {
+    const m = new Map<string, Capability[]>();
+    for (const c of filtered) { const k = c.category ?? "Uncategorized"; (m.get(k) ?? m.set(k, []).get(k)!).push(c); }
+    return [...m.entries()].sort((a, b) => catRank(a[0]) - catRank(b[0])).map(([k, list]) => [k, list.sort((x, y) => (x.position ?? 0) - (y.position ?? 0))] as const);
+  }, [filtered]);
+
   return (
-    <div className="flex flex-col gap-2">
-      {isAdmin && !adding && <button type="button" className="btn btn-secondary self-start" onClick={() => setAdding(true)}>+ Add capability</button>}
-      {adding && <CapRow cap={null} isAdmin onDone={() => setAdding(false)} />}
-      {capabilities.map((c) => <CapRow key={c.id} cap={c} isAdmin={isAdmin} />)}
-      {capabilities.length === 0 && !adding && <p className="card px-6 py-8 text-center text-sm text-ink-muted">No capabilities yet.</p>}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select className={fc} value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
+          <option value="all">All categories</option>
+          {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input className={`${fc} min-w-[14rem] flex-1`} placeholder="Search id, name, specs, matching signal…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search capabilities" />
+        <span className="text-xs text-ink-muted">{filtered.length} of {capabilities.length}</span>
+        {isAdmin && !adding && <button type="button" className="btn btn-secondary btn-xs" onClick={() => setAdding(true)}>+ Add</button>}
+      </div>
+      {adding && <CapForm cap={null} onDone={() => setAdding(false)} />}
+      {groups.map(([category, list]) => (
+        <div key={category} className="flex flex-col gap-1.5">
+          <h3 className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted">{category} <span className="text-ink-muted/60">({list.length})</span></h3>
+          {list.map((c) => <CapCard key={c.id} cap={c} isAdmin={isAdmin} />)}
+        </div>
+      ))}
+      {filtered.length === 0 && !adding && <p className="card px-6 py-8 text-center text-sm text-ink-muted">No capabilities match.</p>}
     </div>
   );
 }
 
-function CapRow({ cap, isAdmin, onDone }: { cap: Capability | null; isAdmin: boolean; onDone?: () => void }) {
+function CapCard({ cap, isAdmin }: { cap: Capability; isAdmin: boolean }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) return <CapForm cap={cap} onDone={() => setEditing(false)} />;
+  return (
+    <div className="card p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        {cap.capability_id && <span className="font-mono text-xs text-nav">{cap.capability_id}</span>}
+        <Link href={`/catalog/capabilities/${cap.id}`} className="font-medium text-ink hover:text-link">{cap.name}</Link>
+        {cap.solid_liquid && <span className="chip bg-surface-muted text-nav text-[0.6rem]">{cap.solid_liquid}</span>}
+        {cap.hubspot_product_id && <span className="text-[0.6rem] text-emerald-600" title="Linked to a HubSpot product">● HubSpot</span>}
+        {cap.active === false && <span className="chip bg-surface-muted text-ink-muted/70 text-[0.6rem]">inactive</span>}
+        {isAdmin && <button type="button" className="ml-auto text-xs text-link hover:underline" onClick={() => setEditing(true)}>Edit</button>}
+      </div>
+      {cap.specs && <p className="mt-1 text-xs text-ink">{cap.specs}</p>}
+      {cap.matching_signal && <p className="mt-0.5 text-xs text-ink-muted">Suggest when: {cap.matching_signal}</p>}
+    </div>
+  );
+}
+
+function CapForm({ cap, onDone }: { cap: Capability | null; onDone: () => void }) {
   const router = useRouter();
-  const [v, setV] = useState({ capability_id: cap?.capability_id ?? "", name: cap?.name ?? "", category: cap?.category ?? "", description: cap?.description ?? "" });
+  const [v, setV] = useState({
+    capability_id: cap?.capability_id ?? "", name: cap?.name ?? "", category: cap?.category ?? "", specs: cap?.specs ?? "",
+    matching_signal: cap?.matching_signal ?? "", solid_liquid: cap?.solid_liquid ?? "", description: cap?.description ?? "",
+    data_sheet: cap?.data_sheet ?? "", position: cap?.position != null ? String(cap.position) : "",
+  });
   const [busy, setBusy] = useState(false);
-  const dirty = !cap || v.capability_id !== (cap.capability_id ?? "") || v.name !== cap.name || v.category !== (cap.category ?? "") || v.description !== (cap.description ?? "");
+  const upd = (k: keyof typeof v, val: string) => setV((s) => ({ ...s, [k]: val }));
 
   async function post(body: Record<string, unknown>) {
     setBusy(true);
     const r = await fetch("/api/catalog/capabilities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     setBusy(false);
-    if (r.ok) { onDone?.(); router.refresh(); } else alert((await r.json().catch(() => ({}))).error || "Failed");
+    if (r.ok) { onDone(); router.refresh(); } else alert((await r.json().catch(() => ({}))).error || "Failed");
   }
+  const data = () => ({
+    capability_id: v.capability_id || null, name: v.name, category: v.category || null, specs: v.specs || null,
+    matching_signal: v.matching_signal || null, solid_liquid: v.solid_liquid || null, description: v.description || null,
+    data_sheet: v.data_sheet || null, position: v.position ? Number(v.position) : undefined,
+  });
 
-  if (!isAdmin) {
-    return (
-      <div className="card p-3 text-sm">
-        <div className="flex items-center gap-2">{cap?.capability_id && <span className="font-mono text-xs text-nav">{cap.capability_id}</span>}<span className="font-medium text-ink">{cap?.name}</span>{cap?.category && <span className="chip bg-surface-muted text-nav text-[0.6rem]">{cap.category}</span>}</div>
-        {cap?.description && <p className="mt-1 text-xs text-ink-muted">{cap.description}</p>}
-      </div>
-    );
-  }
   return (
-    <div className="card flex flex-wrap items-start gap-2 p-3">
-      <input className={`${ic} w-24`} placeholder="ID" value={v.capability_id} onChange={(e) => setV({ ...v, capability_id: e.target.value })} />
-      <input className={`${ic} w-48`} placeholder="Name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
-      <input className={`${ic} w-32`} placeholder="Category" value={v.category} onChange={(e) => setV({ ...v, category: e.target.value })} />
-      <input className={`${ic} min-w-[12rem] flex-1`} placeholder="Description" value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} />
-      <button type="button" className="btn btn-primary btn-xs" disabled={busy || !dirty || !v.name.trim()}
-        onClick={() => post(cap ? { action: "update", id: cap.id, data: { ...v, capability_id: v.capability_id || null, category: v.category || null, description: v.description || null } } : { action: "create", data: { ...v, capability_id: v.capability_id || null, category: v.category || null, description: v.description || null } })}>
-        {cap ? "Save" : "Add"}
-      </button>
-      {cap ? <button type="button" className="btn btn-danger btn-xs" disabled={busy} onClick={() => confirm(`Delete ${cap.name}?`) && post({ action: "delete", id: cap.id })}>Delete</button>
-        : <button type="button" className="btn btn-ghost btn-xs" onClick={onDone}>Cancel</button>}
+    <div className="card flex flex-col gap-2 p-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <label className="text-xs text-ink-muted">ID<input className={ic} value={v.capability_id} onChange={(e) => upd("capability_id", e.target.value)} /></label>
+        <label className="col-span-2 text-xs text-ink-muted">Name<input className={ic} value={v.name} onChange={(e) => upd("name", e.target.value)} /></label>
+        <label className="text-xs text-ink-muted">Category<input className={ic} value={v.category} onChange={(e) => upd("category", e.target.value)} placeholder="Lab service…" /></label>
+        <label className="text-xs text-ink-muted">Solid / Liquid<input className={ic} value={v.solid_liquid} onChange={(e) => upd("solid_liquid", e.target.value)} /></label>
+        <label className="text-xs text-ink-muted">Position<input className={ic} type="number" value={v.position} onChange={(e) => upd("position", e.target.value)} /></label>
+        <label className="col-span-2 text-xs text-ink-muted">Data sheet (URL)<input className={ic} value={v.data_sheet} onChange={(e) => upd("data_sheet", e.target.value)} /></label>
+      </div>
+      <label className="text-xs text-ink-muted">Specs<input className={ic} value={v.specs} onChange={(e) => upd("specs", e.target.value)} /></label>
+      <label className="text-xs text-ink-muted">Matching signal (suggest when…)<input className={ic} value={v.matching_signal} onChange={(e) => upd("matching_signal", e.target.value)} /></label>
+      <label className="text-xs text-ink-muted">Description<textarea className={ic} rows={2} value={v.description} onChange={(e) => upd("description", e.target.value)} /></label>
+      <div className="flex gap-2">
+        <button type="button" className="btn btn-primary btn-xs" disabled={busy || !v.name.trim()}
+          onClick={() => post(cap ? { action: "update", id: cap.id, data: data() } : { action: "create", data: data() })}>{cap ? "Save" : "Add"}</button>
+        {cap && <button type="button" className="btn btn-danger btn-xs" disabled={busy} onClick={() => confirm(`Delete ${cap.name}?`) && post({ action: "delete", id: cap.id })}>Delete</button>}
+        <button type="button" className="btn btn-ghost btn-xs" onClick={onDone}>Cancel</button>
+      </div>
     </div>
   );
 }

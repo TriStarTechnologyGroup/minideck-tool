@@ -5,7 +5,7 @@ import { requireApiAdmin } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { syncCapabilityProduct, archiveCatalogProduct } from "@/lib/hubspot-catalog-sync";
 
-const CAP_SELECT = "id, capability_id, name, description, hubspot_product_id";
+const CAP_SELECT = "id, capability_id, name, category, description, specs, matching_signal, solid_liquid, data_sheet, active, position, hubspot_product_id";
 
 // POST /api/catalog/capabilities — create / update / delete a capability (admin only).
 // Mirrors to a HubSpot product on create/update (best-effort); archives it on delete.
@@ -14,6 +14,12 @@ const fields = z.object({
   name: z.string().trim().min(1),
   category: z.string().trim().nullish(),
   description: z.string().trim().nullish(),
+  specs: z.string().trim().nullish(),
+  matching_signal: z.string().trim().nullish(),
+  solid_liquid: z.string().trim().nullish(),
+  data_sheet: z.string().trim().nullish(),
+  active: z.boolean().optional(),
+  position: z.number().int().optional(),
 });
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), data: fields }),
