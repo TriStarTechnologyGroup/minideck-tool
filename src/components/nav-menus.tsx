@@ -1,7 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
+
+function useIsActive() {
+  const pathname = usePathname();
+  return (href: string) => pathname === href || pathname.startsWith(href + "/");
+}
+
+/** A single top-bar link with active-route highlighting. */
+export function NavLink({ href, label }: { href: string; label: string }) {
+  const active = useIsActive()(href);
+  return (
+    <Link href={href} className={`font-medium transition-colors hover:text-primary ${active ? "text-primary" : "text-white/90"}`}>
+      {label}
+    </Link>
+  );
+}
 
 function useDismiss(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -25,17 +41,19 @@ const chevron = (
 export function NavDropdown({ label, items }: { label: string; items: { href: string; label: string }[] }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(() => setOpen(false));
+  const isActive = useIsActive();
+  const parentActive = items.some((i) => isActive(i.href));
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="true" aria-expanded={open}
-        className="flex items-center gap-1 font-medium text-white/90 transition-colors hover:text-primary">
+        className={`flex items-center gap-1 font-medium transition-colors hover:text-primary ${parentActive ? "text-primary" : "text-white/90"}`}>
         {label} {chevron}
       </button>
       {open && (
         <div className="absolute left-0 mt-2 min-w-[11rem] rounded-md border border-white/10 bg-ink-deep py-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.7)]">
           {items.map((i) => (
             <Link key={i.href} href={i.href} onClick={() => setOpen(false)}
-              className="block px-3.5 py-2 text-sm text-white/90 transition-colors hover:bg-white/10 hover:text-primary">
+              className={`block px-3.5 py-2 text-sm transition-colors hover:bg-white/10 hover:text-primary ${isActive(i.href) ? "bg-white/5 text-primary" : "text-white/90"}`}>
               {i.label}
             </Link>
           ))}
