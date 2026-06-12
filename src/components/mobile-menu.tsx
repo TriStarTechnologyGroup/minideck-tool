@@ -5,7 +5,7 @@ import { useState } from "react";
 
 type Group = { label: string; items: [string, string][] };
 const GROUPS: Group[] = [
-  { label: "Research", items: [["/prospecting", "Prospecting"], ["/companies", "Companies"]] },
+  { label: "Research", items: [["/prospecting", "Prospecting"], ["/companies", "Companies"], ["/research/roles", "Decision-maker roles"]] },
   { label: "Sales", items: [["/inbound", "Inbound"], ["/campaigns", "Campaigns"], ["/decks", "Decks"], ["/leads", "Leads"]] },
   { label: "Catalog", items: [["/catalog/tma", "TMAs"], ["/catalog/capabilities", "Capabilities"]] },
 ];
