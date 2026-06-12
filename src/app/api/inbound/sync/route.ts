@@ -7,7 +7,7 @@ import { runInboundSync } from "@/lib/inbound-sync";
 // Poll HubSpot for new RFQ deals + contact-form submissions and upsert the inbox.
 // Auth: Vercel Cron's Bearer CRON_SECRET, or an admin session ("Sync now"). GET (cron) + POST (UI).
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // deal loop + per-deal AI classification can exceed 60s on a cold/large run
 
 async function handle(req: NextRequest) {
   const secret = serverEnv.CRON_SECRET;
