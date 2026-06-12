@@ -280,7 +280,7 @@ export type RfqDeal = {
   id: string; dealname: string | null; dealstage: string | null; pipeline: string | null;
   amount: number | null; createdate: string | null;
   contact: { id: string; email: string | null; firstname: string | null; lastname: string | null; company: string | null } | null;
-  lineItems: { sku: string | null; name: string | null; quantity: number | null; hubspot_product_id: string | null }[];
+  lineItems: { sku: string | null; name: string | null; quantity: number | null; price: number | null; hubspot_product_id: string | null }[];
 };
 
 async function batchReadContacts(ids: string[]): Promise<Map<string, RfqDeal["contact"]>> {
@@ -300,9 +300,9 @@ async function batchReadLineItems(ids: string[]): Promise<Map<string, RfqDeal["l
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     const res = await fetch(`${BASE}/crm/v3/objects/line_items/batch/read`, { method: "POST", headers: headers(),
-      body: JSON.stringify({ properties: ["name", "hs_sku", "quantity", "hs_product_id"], inputs: chunk.map((id) => ({ id })) }) });
+      body: JSON.stringify({ properties: ["name", "hs_sku", "quantity", "price", "hs_product_id"], inputs: chunk.map((id) => ({ id })) }) });
     if (!res.ok) continue;
-    for (const li of (await res.json()).results ?? []) out.set(String(li.id), { sku: li.properties?.hs_sku ?? null, name: li.properties?.name ?? null, quantity: li.properties?.quantity != null ? Number(li.properties.quantity) : null, hubspot_product_id: li.properties?.hs_product_id ?? null });
+    for (const li of (await res.json()).results ?? []) out.set(String(li.id), { sku: li.properties?.hs_sku ?? null, name: li.properties?.name ?? null, quantity: li.properties?.quantity != null ? Number(li.properties.quantity) : null, price: li.properties?.price != null ? Number(li.properties.price) : null, hubspot_product_id: li.properties?.hs_product_id ?? null });
   }
   return out;
 }
@@ -329,8 +329,12 @@ export async function fetchRfqDeals(pipelineId: string, sinceIso: string): Promi
     const res = await fetch(`${BASE}/crm/v3/objects/deals/${d.id}?associations=contacts,line_items`, { headers: headers() });
     if (!res.ok) continue;
     const j = await res.json();
-    d.contactIds = (j.associations?.contacts?.results ?? []).map((a: { id?: string; toObjectId?: string }) => String(a.id ?? a.toObjectId));
-    d.lineItemIds = (j.associations?.line_items?.results ?? []).map((a: { id?: string; toObjectId?: string }) => String(a.id ?? a.toObjectId));
+    // HubSpot keys association groups by their LABEL, not the requested name: contacts → "contacts",
+    // but line_items → "line items" (with a space). Read both forms so the cart isn't silently dropped.
+    const assoc = (j.associations ?? {}) as Record<string, { results?: { id?: string; toObjectId?: string }[] }>;
+    const idsOf = (...keys: string[]) => keys.flatMap((k) => (assoc[k]?.results ?? []).map((a) => String(a.id ?? a.toObjectId)));
+    d.contactIds = idsOf("contacts");
+    d.lineItemIds = idsOf("line_items", "line items");
   }
 
   // 3. batch-read the referenced contacts + line items
@@ -343,6 +347,18 @@ export async function fetchRfqDeals(pipelineId: string, sinceIso: string): Promi
     contact: d.contactIds.length ? contacts.get(d.contactIds[0]) ?? null : null,
     lineItems: d.lineItemIds.map((id) => items.get(id)).filter(Boolean) as RfqDeal["lineItems"],
   }));
+}
+
+/** Fetch the cart (line items) for one deal by id. Used to backfill inquiries whose cart was dropped
+ *  by the earlier `line_items` vs `"line items"` association-key bug. */
+export async function fetchDealLineItems(dealId: string): Promise<RfqDeal["lineItems"]> {
+  const res = await fetch(`${BASE}/crm/v3/objects/deals/${dealId}?associations=line_items`, { headers: headers() });
+  if (!res.ok) return [];
+  const assoc = ((await res.json()).associations ?? {}) as Record<string, { results?: { id?: string; toObjectId?: string }[] }>;
+  const ids = [...new Set(["line_items", "line items"].flatMap((k) => (assoc[k]?.results ?? []).map((a) => String(a.id ?? a.toObjectId))))];
+  if (!ids.length) return [];
+  const items = await batchReadLineItems(ids);
+  return ids.map((id) => items.get(id)).filter(Boolean) as RfqDeal["lineItems"];
 }
 
 export type FormSubmission = { submittedAt: string; values: Record<string, string>; pageUrl: string | null };
