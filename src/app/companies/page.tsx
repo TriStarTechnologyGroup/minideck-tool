@@ -1,12 +1,13 @@
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import CompaniesTable, { type CompanyRow } from "./companies-table";
+import SyncActions from "./sync-actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Companies — Minideck" };
 
 export default async function CompaniesPage() {
-  await requireUser();
+  const profile = await requireUser();
   const supabase = await createClient();
 
   const [{ data: companies }, { data: oppRows }, { data: inqRows }] = await Promise.all([
@@ -36,6 +37,7 @@ export default async function CompaniesPage() {
           eligibility and reporting. {rows.length.toLocaleString()} companies.
         </p>
       </header>
+      {profile.role === "admin" && <SyncActions />}
       <CompaniesTable rows={rows} />
       <p className="text-xs text-ink-muted/70">
         Type is editable inline. Default view shows Pharma &amp; Biotech; toggle the chips to see other segments.
