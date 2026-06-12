@@ -22,9 +22,14 @@ const contactSchema = z.object({
   linkedin_url: z.string().trim().nullish(),
   location: z.string().trim().nullish(),
   confidence: z.coerce.number().nullish(),
-  company_id: z.string().uuid().nullish(),
-  opportunity_id: z.string().uuid().nullish(),
+  // Accept any string; we null out non-UUIDs below so a malformed/test company id never drops the
+  // person (they save unlinked) or trips the FK.
+  company_id: z.string().nullish(),
+  opportunity_id: z.string().nullish(),
 });
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const asUuid = (v: unknown): string | null => (typeof v === "string" && UUID.test(v) ? v : null);
 
 export async function POST(req: NextRequest) {
   const secret = serverEnv.CLAY_WEBHOOK_SECRET;
@@ -47,8 +52,8 @@ export async function POST(req: NextRequest) {
     const c = parsed.data;
     const email = (c.email || "").toLowerCase().trim();
     if (!email) { errors.push("row without email skipped"); continue; }
-    const company_id = c.company_id ?? topCompany ?? null;
-    const opportunity_id = c.opportunity_id ?? topOpp ?? null;
+    const company_id = asUuid(c.company_id) ?? asUuid(topCompany);
+    const opportunity_id = asUuid(c.opportunity_id) ?? asUuid(topOpp);
 
     const row: Record<string, unknown> = {
       email, source: "clay", enriched_at: now, updated_at: now,
