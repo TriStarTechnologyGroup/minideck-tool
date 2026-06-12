@@ -9,6 +9,7 @@ const PRIMARY_NAV = [
   { href: "/campaigns", label: "Campaigns" },
   { href: "/inbound", label: "Inbound" },
   { href: "/prospecting", label: "Prospecting" },
+  { href: "/companies", label: "Companies" },
   { href: "/catalog", label: "Catalog" },
 ];
 const ADMIN_NAV = [

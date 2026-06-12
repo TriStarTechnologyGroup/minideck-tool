@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { tierRank, isProprietary } from "@/lib/prospecting-ui";
+import { NEEDS_TYPE, type CompanyType } from "@/lib/company-types";
 import OpportunitiesTable from "./opportunities-table";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ type Opp = {
   id: string;
   company_id: string | null;
   company_name: string;
+  company_type: CompanyType;
   asset_name: string;
   modality: string | null;
   target: string | null;
@@ -26,12 +28,19 @@ export default async function ProspectingPage() {
   await requireUser();
   const supabase = await createClient();
 
-  const { data } = await supabase
-    .from("opportunities")
-    .select("id, company_id, company_name, asset_name, modality, target, phase, fit_score, fit_tier, proprietary, matched_tma_skus, suggested_capabilities, run_label")
-    .limit(500);
+  const [{ data }, { data: companyRows }] = await Promise.all([
+    supabase
+      .from("opportunities")
+      .select("id, company_id, company_name, asset_name, modality, target, phase, fit_score, fit_tier, proprietary, matched_tma_skus, suggested_capabilities, run_label")
+      .limit(500),
+    supabase.from("companies").select("id, type").limit(5000),
+  ]);
 
-  const opps = (data ?? []) as Opp[];
+  const typeById = new Map((companyRows ?? []).map((c) => [c.id as string, (c.type as CompanyType) ?? NEEDS_TYPE]));
+  const opps = ((data ?? []) as Omit<Opp, "company_type">[]).map((o) => ({
+    ...o,
+    company_type: (o.company_id ? typeById.get(o.company_id) : undefined) ?? NEEDS_TYPE,
+  })) as Opp[];
   // Proprietary first, then by fit score (nulls last).
   const ranked = [...opps].sort((a, b) => {
     if (isProprietary(a.proprietary) !== isProprietary(b.proprietary)) return isProprietary(a.proprietary) ? -1 : 1;
