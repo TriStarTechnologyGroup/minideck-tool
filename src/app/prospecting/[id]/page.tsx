@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import OpportunityList, { type Opp } from "./opportunity-list";
 import ProgramTable, { type Program } from "./program-table";
+import ScopeContacts from "./scope-contacts";
 
 export const dynamic = "force-dynamic";
 
@@ -60,9 +61,12 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
       </section>
 
       <section>
-        <h2 className="mb-2 font-display text-lg font-medium text-ink">
-          Contacts <span className="font-sans text-sm font-normal text-ink-muted">({contacts.length})</span>
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-medium text-ink">
+            Contacts <span className="font-sans text-sm font-normal text-ink-muted">({contacts.length})</span>
+          </h2>
+          <ScopeContacts companyId={c.id} />
+        </div>
         {contacts.length === 0 ? (
           <p className="card px-5 py-6 text-sm text-ink-muted">No contacts yet. Enrichment will pull decision-makers for verified companies.</p>
         ) : (
