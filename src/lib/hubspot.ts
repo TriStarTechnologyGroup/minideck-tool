@@ -274,6 +274,93 @@ export async function archiveProduct(productId: string): Promise<void> {
   if (!res.ok && res.status !== 404) throw new Error(`product archive: ${res.status} ${await res.text()}`);
 }
 
+// ───────────────────────── Companies (sync) ─────────────────────────
+
+export const COMPANY_TYPE_PROPERTY = "tristar_company_type";
+
+/** Normalize a domain for matching: strip protocol, www., path, lowercase. */
+export function normalizeDomain(d: string | null | undefined): string {
+  if (!d) return "";
+  return d.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].replace(/\.$/, "");
+}
+
+/** Normalize a company name for fallback matching: lowercase, drop legal-entity suffixes +
+ *  punctuation. Conservative — only strips entity suffixes (inc/llc/ltd…), NOT industry words,
+ *  so distinct firms ("Acme Therapeutics" vs "Acme Bio") never collapse together. */
+export function normalizeCompanyName(n: string | null | undefined): string {
+  if (!n) return "";
+  let s = n.toLowerCase().replace(/[.,]/g, " ");
+  s = s.replace(/\b(inc|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|gmbh|ag|plc|s\.a|sa|s\.r\.l|srl|bv|nv|kk|oy|ab|as|holdings?|group)\b/g, " ");
+  s = s.replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  return s;
+}
+
+export type HsCompany = { id: string; name: string | null; domain: string | null; website: string | null; industry: string | null };
+
+/** Pull the whole company library once into lookup maps (id, domain → id, normalized name → id).
+ *  The list endpoint is read-consistent (unlike search). Used by the dedup-safe company sync. */
+export async function fetchCompanyIndex(): Promise<{ byId: Map<string, HsCompany>; byDomain: Map<string, string>; byName: Map<string, string> }> {
+  const byId = new Map<string, HsCompany>();
+  const byDomain = new Map<string, string>();
+  const byName = new Map<string, string>();
+  let after: string | undefined;
+  do {
+    const u = new URL(`${BASE}/crm/v3/objects/companies`);
+    u.searchParams.set("limit", "100");
+    u.searchParams.set("properties", "name,domain,website,industry");
+    if (after) u.searchParams.set("after", after);
+    const res = await fetch(u, { headers: headers() });
+    if (!res.ok) throw new Error(`company index: ${res.status} ${await res.text()}`);
+    const j = await res.json();
+    for (const c of j.results ?? []) {
+      const id = String(c.id);
+      const p = c.properties ?? {};
+      const co: HsCompany = { id, name: p.name ?? null, domain: p.domain ?? null, website: p.website ?? null, industry: p.industry ?? null };
+      byId.set(id, co);
+      const dom = normalizeDomain(p.domain || p.website);
+      if (dom && !byDomain.has(dom)) byDomain.set(dom, id); // first wins (oldest id)
+      const nm = normalizeCompanyName(p.name);
+      if (nm && !byName.has(nm)) byName.set(nm, id);
+    }
+    after = j.paging?.next?.after;
+  } while (after);
+  return { byId, byDomain, byName };
+}
+
+/** Ensure the custom `tristar_company_type` company property exists (string). Idempotent.
+ *  Needs the crm.schemas.companies.write scope. */
+export async function ensureCompanyTypeProperty(): Promise<void> {
+  const check = await fetch(`${BASE}/crm/v3/properties/companies/${COMPANY_TYPE_PROPERTY}`, { headers: headers() });
+  if (check.ok) return;
+  const res = await fetch(`${BASE}/crm/v3/properties/companies`, {
+    method: "POST", headers: headers(),
+    body: JSON.stringify({ name: COMPANY_TYPE_PROPERTY, label: "TriStar Company Type", type: "string", fieldType: "text", groupName: "companyinformation", description: "TriStar internal company classification (synced from the minideck app)." }),
+  });
+  if (!res.ok && res.status !== 409) throw new Error(`create company-type property: ${res.status} ${await res.text()}`);
+}
+
+/** Update a HubSpot company's properties (PATCH). Needs crm.objects.companies.write. */
+export async function updateCompany(id: string, properties: Record<string, string>): Promise<void> {
+  const res = await fetch(`${BASE}/crm/v3/objects/companies/${id}`, { method: "PATCH", headers: headers(), body: JSON.stringify({ properties }) });
+  if (!res.ok) throw new Error(`company update: ${res.status} ${await res.text()}`);
+}
+
+/** Create a HubSpot company. Returns the new id. Needs crm.objects.companies.write. */
+export async function createCompany(properties: Record<string, string>): Promise<string> {
+  const res = await fetch(`${BASE}/crm/v3/objects/companies`, { method: "POST", headers: headers(), body: JSON.stringify({ properties }) });
+  if (!res.ok) throw new Error(`company create: ${res.status} ${await res.text()}`);
+  return String((await res.json()).id);
+}
+
+/** Batch-update companies (≤100 per request; chunks internally). Needs crm.objects.companies.write. */
+export async function batchUpdateCompanies(inputs: { id: string; properties: Record<string, string> }[]): Promise<void> {
+  for (let i = 0; i < inputs.length; i += 100) {
+    const chunk = inputs.slice(i, i + 100);
+    const res = await fetch(`${BASE}/crm/v3/objects/companies/batch/update`, { method: "POST", headers: headers(), body: JSON.stringify({ inputs: chunk }) });
+    if (!res.ok) throw new Error(`company batch update: ${res.status} ${await res.text()}`);
+  }
+}
+
 // ───────────────────────── Inbound reads (RFQ deals + contact forms) ─────────────────────────
 
 export type RfqDeal = {
