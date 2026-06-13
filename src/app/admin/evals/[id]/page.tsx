@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { MODELS, LLM_AREAS } from "@/lib/llm";
 import { classifierAreas, assertionAreas, judgeAreas } from "@/lib/evals";
+import { harvestAreas } from "@/lib/eval-harvest";
 import DatasetDetail, { type Example, type Dataset, type Run } from "./dataset-detail";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function EvalDatasetPage({ params }: Ctx) {
         benchable={benchable}
         setDefaultArea={setDefaultArea}
         canSetDefault={LLM_AREAS.includes(setDefaultArea as (typeof LLM_AREAS)[number])}
+        harvestable={harvestAreas().includes(area)}
       />
     </main>
   );

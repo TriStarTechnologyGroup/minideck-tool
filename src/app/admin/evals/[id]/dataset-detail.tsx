@@ -14,7 +14,7 @@ const ic = "rounded-sm border border-line-strong bg-surface px-2 py-1 text-sm te
 const labelOf = (e: Example) => { const v = e.expected?.label ?? e.expected?.type ?? e.expected?.category; return v == null ? "" : String(v); };
 const inputSummary = (i: Record<string, unknown>) => Object.entries(i).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—";
 
-export default function DatasetDetail({ dataset, initialExamples, runs, models, runnable, benchable, setDefaultArea, canSetDefault }: { dataset: Dataset; initialExamples: Example[]; runs: Run[]; models: { id: string; label: string }[]; runnable: boolean; benchable: boolean; setDefaultArea: string; canSetDefault: boolean }) {
+export default function DatasetDetail({ dataset, initialExamples, runs, models, runnable, benchable, setDefaultArea, canSetDefault, harvestable }: { dataset: Dataset; initialExamples: Example[]; runs: Run[]; models: { id: string; label: string }[]; runnable: boolean; benchable: boolean; setDefaultArea: string; canSetDefault: boolean; harvestable: boolean }) {
   const router = useRouter();
   const [examples, setExamples] = useState(initialExamples);
   const [model, setModel] = useState(models[0]?.id ?? "claude-opus-4-8");
@@ -115,6 +115,16 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
 
   const fmtCost = (c: number | null) => (c == null ? "—" : c < 0.01 ? `$${c.toFixed(4)}` : `$${c.toFixed(2)}`);
 
+  async function harvest() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/evals/${dataset.id}/candidates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ limit: 25 }) });
+      const j = await res.json();
+      if (res.ok) { setMsg(`Pulled ${j.inserted} candidate${j.inserted === 1 ? "" : "s"} from app data${j.skipped ? ` (${j.skipped} already present)` : ""} — label them below.`); router.refresh(); }
+      else setMsg(`Error: ${j.error ?? res.status}`);
+    } finally { setBusy(false); }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {/* State banner */}
@@ -202,7 +212,8 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
         <div className="flex flex-wrap items-center gap-2">
           <label className="btn btn-secondary btn-xs cursor-pointer">Upload CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && onCsv(e.target.files[0])} /></label>
           <button type="button" className="btn btn-ghost btn-xs" onClick={exportCsv} disabled={!total}>Export CSV</button>
-          <span className="text-xs text-ink-muted">CSV: a <code>label</code> column is the gold answer; other columns become the input.</span>
+          {harvestable && <button type="button" className="btn btn-secondary btn-xs" disabled={busy} onClick={harvest}>Pull 25 from app data</button>}
+          <span className="text-xs text-ink-muted">CSV: a <code>label</code> column is the gold answer; other columns become the input.{harvestable && " “Pull from app data” seeds unlabeled candidates from real records."}</span>
         </div>
         <div className="card flex flex-wrap items-end gap-2 p-3">
           <label className="flex-1 text-xs text-ink-muted">Input (JSON)<textarea className={`${ic} w-full font-mono`} rows={2} value={addInput} onChange={(e) => setAddInput(e.target.value)} /></label>
