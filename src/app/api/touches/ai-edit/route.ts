@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiUser } from "@/lib/api";
 import { serverEnv } from "@/lib/env.server";
+import { getModelFor, logLlmCall } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -59,15 +60,18 @@ export async function POST(req: NextRequest) {
     `Instruction: ${prompt}`,
   ].filter(Boolean).join("\n");
 
+  const { model } = await getModelFor("touch_editor");
+  const t0 = Date.now();
   try {
     const client = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
     const res = await client.messages.parse({
-      model: "claude-opus-4-8",
+      model,
       max_tokens: 6000,
       system: SYSTEM,
       messages: [{ role: "user", content: userMsg }],
       output_config: { format: zodOutputFormat(Result) },
     });
+    await logLlmCall({ area: "touch_editor", model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0, ref: accountId });
     const out = res.parsed_output;
     if (!out) return NextResponse.json({ error: "No draft produced" }, { status: 502 });
     // Only return drafts for the requested touches, carrying the seq for display.
@@ -75,6 +79,7 @@ export async function POST(req: NextRequest) {
     const drafts = out.touches.filter((d) => seqById.has(d.id)).map((d) => ({ ...d, seq: seqById.get(d.id)! }));
     return NextResponse.json({ drafts });
   } catch (e) {
+    await logLlmCall({ area: "touch_editor", model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e), ref: accountId });
     return NextResponse.json({ error: e instanceof Error ? e.message : "AI edit failed" }, { status: 500 });
   }
 }

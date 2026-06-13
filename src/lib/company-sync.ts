@@ -9,6 +9,7 @@ import {
   createCompany, normalizeDomain, normalizeCompanyName, COMPANY_TYPE_PROPERTY,
 } from "@/lib/hubspot";
 import { NEEDS_TYPE, type CompanyType } from "@/lib/company-types";
+import { getModelFor, logLlmCall } from "@/lib/llm";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -35,18 +36,22 @@ Decide from the name, email/web domain, and industry. Set confident=false ONLY w
 export async function classifyCompanyType(input: { name: string; domain?: string | null; industry?: string | null }): Promise<{ type: CompanyType; reason: string } | null> {
   if (!serverEnv.ANTHROPIC_API_KEY) return null;
   const client = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
+  const { model } = await getModelFor("company_type");
+  const t0 = Date.now();
   try {
     const res = await client.messages.parse({
-      model: "claude-haiku-4-5",
+      model,
       max_tokens: 300,
       system: SYSTEM,
       messages: [{ role: "user", content: `Company: ${input.name}\nDomain: ${input.domain ?? "(unknown)"}\nIndustry: ${input.industry ?? "(unknown)"}` }],
       output_config: { format: zodOutputFormat(ClassResult) },
     });
+    await logLlmCall({ area: "company_type", model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0 });
     const out = res.parsed_output;
     if (!out || !out.confident) return null;
     return { type: out.type as CompanyType, reason: out.reason };
-  } catch {
+  } catch (e) {
+    await logLlmCall({ area: "company_type", model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e) });
     return null;
   }
 }
