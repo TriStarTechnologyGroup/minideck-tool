@@ -8,6 +8,7 @@ import ScoreBreakdown, { type ScoreComponent, type Feedback, type TmaAdjustment 
 import CapabilitiesPanel, { type OppCapability } from "./capabilities-panel";
 import DeleteOpportunity from "./delete-opportunity";
 import TmaPanel, { type AddedTma, type CatalogItem } from "./tma-panel";
+import FeedbackButtons from "@/components/feedback-buttons";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +133,12 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           <p className="card p-5 text-sm leading-relaxed text-ink">{o.rationale}</p>
         </section>
       )}
+
+      <FeedbackButtons
+        area="opportunity_validity"
+        label="Was this a valid opportunity?"
+        input={{ company: o.company_name, asset: o.asset_name, modality: o.modality, target: o.target, phase: o.phase, tumor_types: o.tumor_types, fit_tier: o.fit_tier, matched_tma_skus: o.matched_tma_skus, suggested_capabilities: o.suggested_capabilities, rationale: o.rationale }}
+      />
 
       <section>
         <h2 className="mb-2 font-display text-lg font-medium text-ink">Scoring breakdown</h2>
