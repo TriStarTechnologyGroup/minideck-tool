@@ -26,7 +26,7 @@ export default async function ContactsPage() {
         <h1 className="mt-1 text-3xl">Contacts</h1>
         <p className="mt-1 text-sm text-ink-muted">
           People across companies, opportunities, inbound, and campaigns. {rows.length.toLocaleString()} contacts.
-          Enrichment (Clay) + HubSpot two-way sync land next.
+          Admins can classify ICP decision-makers from titles, enrich via Clay, and two-way sync to HubSpot.
         </p>
       </header>
       {profile.role === "admin" && <ContactSyncActions />}

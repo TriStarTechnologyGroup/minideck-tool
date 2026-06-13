@@ -23,12 +23,27 @@ export default function ContactSyncActions() {
     finally { setBusy(null); }
   };
 
+  const classifyDMs = async (dryRun: boolean) => {
+    setBusy(dryRun ? "dm-preview" : "dm"); setMsg(null); setReport(null);
+    try {
+      const res = await fetch("/api/contacts/classify-decision-makers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dryRun }) });
+      const j = await res.json();
+      if (!res.ok) setMsg(`Error: ${j.error ?? res.status}`);
+      else if (dryRun) setMsg(`Preview: ${j.wouldFlag} contacts would be flagged as decision-makers (${j.alreadyDM} already), ${j.functionsToFill} functions backfilled.${j.sample?.length ? " e.g. " + j.sample.slice(0, 8).join(", ") : ""}`);
+      else { setMsg(`Flagged ${j.flagged} decision-makers (${j.alreadyDM} already) · ${j.functionsFilled} functions backfilled.`); router.refresh(); }
+    } catch (e) { setMsg(`Error: ${e instanceof Error ? e.message : String(e)}`); }
+    finally { setBusy(null); }
+  };
+
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-surface-subtle p-4">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-secondary text-sm" disabled={!!busy} onClick={() => run("dryrun")}>{busy === "dryrun" ? "Checking…" : "Preview HubSpot sync"}</button>
         <button type="button" className="btn btn-primary text-sm" disabled={!!busy} onClick={() => run("sync")}>{busy === "sync" ? "Syncing…" : "Sync to HubSpot"}</button>
         <label className="flex items-center gap-1.5 text-xs text-ink-muted"><input type="checkbox" checked={createMissing} onChange={(e) => setCreateMissing(e.target.checked)} className="accent-[var(--color-primary)]" /> create missing in HubSpot</label>
+        <span className="mx-1 text-ink-muted/40">·</span>
+        <button type="button" className="btn btn-ghost text-sm" disabled={!!busy} onClick={() => classifyDMs(true)}>{busy === "dm-preview" ? "Checking…" : "Preview decision-makers"}</button>
+        <button type="button" className="btn btn-secondary text-sm" disabled={!!busy} onClick={() => classifyDMs(false)}>{busy === "dm" ? "Classifying…" : "Classify decision-makers"}</button>
       </div>
       {msg && <p className="text-xs text-ink">{msg}</p>}
       {report && (
