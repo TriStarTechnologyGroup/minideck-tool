@@ -39,6 +39,9 @@ const schema = z.object({
   // into /api/contacts/clay-webhook. Both blank → Clay enrichment disabled.
   CLAY_INTAKE_WEBHOOK_URL: z.string().default(""),
   CLAY_WEBHOOK_SECRET: z.string().default(""),
+  // Optional incoming-webhook URL (Slack/Discord/Teams style — accepts {text}) for the weekly digest.
+  // Blank → the digest is stored + viewable in-app only (no push).
+  DIGEST_WEBHOOK_URL: z.string().default(""),
   // Public values are also readable server-side
   NEXT_PUBLIC_SUPABASE_URL: z.string().default(""),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().default(""),
