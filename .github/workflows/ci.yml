@@ -16,5 +16,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run test:guardrails  # deterministic guardrails — release blocker, fails fast
       - run: npm test
       - run: npm run build

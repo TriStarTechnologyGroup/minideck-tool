@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { MODELS, LLM_AREAS } from "@/lib/llm";
-import { classifierAreas } from "@/lib/evals";
+import { classifierAreas, assertionAreas } from "@/lib/evals";
 import DatasetDetail, { type Example, type Dataset, type Run } from "./dataset-detail";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,8 @@ export default async function EvalDatasetPage({ params }: Ctx) {
         initialExamples={(examples ?? []) as Example[]}
         runs={(runs ?? []) as Run[]}
         models={MODELS.map((m) => ({ id: m.id, label: m.label }))}
-        runnable={classifierAreas().includes(ds.area as string) && ds.eval_type === "classification"}
+        runnable={(classifierAreas().includes(ds.area as string) && ds.eval_type === "classification") || (assertionAreas().includes(ds.area as string) && ds.eval_type === "assertion")}
+        benchable={classifierAreas().includes(ds.area as string) && ds.eval_type === "classification"}
         canSetDefault={LLM_AREAS.includes(ds.area as (typeof LLM_AREAS)[number])}
       />
     </main>

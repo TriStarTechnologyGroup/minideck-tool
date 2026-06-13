@@ -1,8 +1,9 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { classifyOrg } from "@/lib/classify";
+import { classifyOrg, classifyByDomain } from "@/lib/classify";
 import { classifyCompanyType } from "@/lib/company-sync";
+import { prospectEligible, companyProspectable, shouldBeTier1, redactPii, containsPii } from "@/lib/guardrails";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -19,6 +20,29 @@ const CLASSIFIERS: Record<string, Classifier> = {
 
 /** Areas that the classification runner can execute today. */
 export function classifierAreas(): string[] { return Object.keys(CLASSIFIERS); }
+
+// Deterministic guardrail assertions: input → actual outcome (a label), compared to the example's
+// expected outcome. No model, no API cost — these run instantly in-app and in CI (guardrails.test.ts
+// covers the same predicates). Each maps to a real production guardrail in src/lib/guardrails.ts.
+type Assertion = (input: Record<string, unknown>) => string;
+const ASSERTIONS: Record<string, Assertion> = {
+  // Academia gate: industry → "eligible", everything else → "blocked". Accepts a category directly,
+  // or a domain (run through the same .edu/.gov rule the inbound sync uses).
+  academia_gate: (i) => {
+    const category = (i.category as string) ?? (i.domain ? classifyByDomain(i.domain as string) ?? "other" : null);
+    return prospectEligible(category) ? "eligible" : "blocked";
+  },
+  // Company suppression: verified, unflagged industry company → "prospectable", else "blocked".
+  company_suppression: (i) =>
+    companyProspectable({ type: (i.type as string) ?? null, verified: i.verified as boolean | null, flagged_for_removal: i.flagged_for_removal as boolean | null }) ? "prospectable" : "blocked",
+  // Tier-1 rule: approved drug program → "tier1", else "not_tier1".
+  tier1_consistency: (i) => (shouldBeTier1((i.highest_phase as string) ?? (i.phase as string) ?? null) ? "tier1" : "not_tier1"),
+  // PII redaction: text must come out clean. "leak" is a guardrail failure.
+  pii_redaction: (i) => (containsPii(redactPii(String(i.text ?? ""))) ? "leak" : "clean"),
+};
+
+/** Areas the deterministic assertion runner can execute. */
+export function assertionAreas(): string[] { return Object.keys(ASSERTIONS); }
 
 const expectedLabel = (e: Record<string, unknown> | null): string | null => {
   if (!e) return null;
@@ -47,10 +71,22 @@ export async function runEvalRun(admin: Admin, runId: string): Promise<void> {
   await admin.from("eval_runs").update({ status: "running", started_at: new Date().toISOString(), n_examples: examples.length }).eq("id", runId);
 
   try {
-    if (ds.eval_type !== "classification") throw new Error(`The runner supports 'classification' datasets so far (got '${ds.eval_type}').`);
-    const classifier = CLASSIFIERS[ds.area as string];
-    if (!classifier) throw new Error(`No classifier registered for area '${ds.area}'.`);
+    const evalType = ds.eval_type as string;
     const model = (run.model as string) || "claude-opus-4-8";
+    // Pick the scorer: classification → production classifier (model-backed, logged + billed under
+    // 'eval'); assertion → deterministic guardrail predicate (no model, no API cost).
+    let predict: (input: Record<string, unknown>) => Promise<string | null>;
+    if (evalType === "classification") {
+      const classifier = CLASSIFIERS[ds.area as string];
+      if (!classifier) throw new Error(`No classifier registered for area '${ds.area}'.`);
+      predict = (input) => classifier(input, model, runId);
+    } else if (evalType === "assertion") {
+      const assertion = ASSERTIONS[ds.area as string];
+      if (!assertion) throw new Error(`No assertion registered for area '${ds.area}'.`);
+      predict = async (input) => assertion(input);
+    } else {
+      throw new Error(`The runner supports 'classification' and 'assertion' datasets so far (got '${evalType}').`);
+    }
 
     const results: Record<string, unknown>[] = [];
     const byClass: Record<string, { total: number; correct: number }> = {};
@@ -58,7 +94,7 @@ export async function runEvalRun(admin: Admin, runId: string): Promise<void> {
     await pool(examples, 5, async (ex) => {
       const expected = expectedLabel(ex.expected);
       let predicted: string | null = null, detail: string | null = null;
-      try { predicted = await classifier(ex.input ?? {}, model, runId); } catch (e) { detail = e instanceof Error ? e.message : String(e); }
+      try { predicted = await predict(ex.input ?? {}); } catch (e) { detail = e instanceof Error ? e.message : String(e); }
       const passed = !!expected && !!predicted && predicted.toLowerCase().trim() === expected.toLowerCase().trim();
       if (expected) { (byClass[expected] ??= { total: 0, correct: 0 }).total++; if (passed) byClass[expected].correct++; }
       if (passed) correct++;
