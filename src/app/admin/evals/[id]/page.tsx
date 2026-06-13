@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { MODELS } from "@/lib/llm";
+import { MODELS, LLM_AREAS } from "@/lib/llm";
 import { classifierAreas } from "@/lib/evals";
 import DatasetDetail, { type Example, type Dataset, type Run } from "./dataset-detail";
 
@@ -19,7 +19,7 @@ export default async function EvalDatasetPage({ params }: Ctx) {
 
   const [{ data: examples }, { data: runs }] = await Promise.all([
     supabase.from("eval_examples").select("id, input, expected, status, source, notes").eq("dataset_id", id).order("created_at").limit(5000),
-    supabase.from("eval_runs").select("id, model, status, metrics, n_examples, n_scored, error, created_at").eq("dataset_id", id).order("created_at", { ascending: false }).limit(10),
+    supabase.from("eval_runs").select("id, model, status, metrics, n_examples, n_scored, error, created_at, bench_group").eq("dataset_id", id).order("created_at", { ascending: false }).limit(40),
   ]);
 
   return (
@@ -39,6 +39,7 @@ export default async function EvalDatasetPage({ params }: Ctx) {
         runs={(runs ?? []) as Run[]}
         models={MODELS.map((m) => ({ id: m.id, label: m.label }))}
         runnable={classifierAreas().includes(ds.area as string) && ds.eval_type === "classification"}
+        canSetDefault={LLM_AREAS.includes(ds.area as (typeof LLM_AREAS)[number])}
       />
     </main>
   );
