@@ -10,6 +10,7 @@ import { classifyOrg, classifyByDomain } from "@/lib/classify";
 import { classifyCompanyType } from "@/lib/company-sync";
 import { prospectEligible, companyProspectable, shouldBeTier1, redactPii, containsPii } from "@/lib/guardrails";
 import { norm, asArray, setScore } from "@/lib/eval-match";
+import { normalizeDomain, normalizeCompanyName } from "@/lib/hubspot";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -103,8 +104,43 @@ async function runJudge(area: string, input: Record<string, unknown>, model: str
 // Compares a predicted set against a gold set (precision/recall/F1). The prediction comes from a
 // registered matcher for the area, or — when none is registered — from the example's own `predicted`
 // field (so offline-scored matches, e.g. exported from a real prospecting run, can be graded today).
-type Matcher = (input: Record<string, unknown>) => string[];
-const MATCHERS: Record<string, Matcher> = {}; // real matchers (inbound_match, dedup_match) land in P7.
+// A matcher prepares shared context once per run (e.g. loads a table), then maps each example's
+// input → a predicted set. Live matchers run real in-app logic; areas without one fall back to the
+// example's own `input.predicted` (offline scoring).
+type Matcher = { prepare?: (admin: Admin) => Promise<unknown>; match: (input: Record<string, unknown>, ctx: unknown) => string[] };
+const tokenize = (s: string): string[] => (s.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((t) => t.length > 2);
+
+const MATCHERS: Record<string, Matcher> = {
+  // Live: mirrors the production dedup rule (normalized domain OR normalized company name) used by the
+  // HubSpot company sync. Given {name, domain}, returns the existing companies it would be merged with.
+  dedup_match: {
+    prepare: async (admin) => {
+      const { data } = await admin.from("companies").select("name, domain, website").limit(5000);
+      return (data ?? []).map((c) => ({ name: String(c.name ?? ""), nd: normalizeDomain((c.domain as string) || (c.website as string)), nn: normalizeCompanyName(c.name as string) }));
+    },
+    match: (input, ctx) => {
+      const list = (ctx as { name: string; nd: string; nn: string }[]) ?? [];
+      const nd = normalizeDomain(String(input.domain ?? input.website ?? ""));
+      const nn = normalizeCompanyName(String(input.name ?? input.company ?? ""));
+      return list.filter((c) => (nd && c.nd === nd) || (nn && c.nn === nn)).map((c) => c.name);
+    },
+  },
+  // Live baseline (NOT the LLM skill): keyword overlap between the inquiry and the TMA catalog
+  // (name / cancer / categories / markers). A deterministic floor to measure the skill against.
+  inbound_match: {
+    prepare: async (admin) => {
+      const { data } = await admin.from("tma_catalog").select("sku, name, cancer, categories, markers").limit(5000);
+      return (data ?? []).map((t) => ({ sku: String(t.sku ?? t.name ?? ""), tokens: new Set(tokenize([t.name, t.cancer, t.categories, t.markers].filter(Boolean).join(" "))) }));
+    },
+    match: (input, ctx) => {
+      const cat = (ctx as { sku: string; tokens: Set<string> }[]) ?? [];
+      const q = new Set(tokenize([input.message, input.requested_products, input.cancer, input.tumor_types, input.target, input.asset].filter(Boolean).map(String).join(" ")));
+      if (!q.size) return [];
+      const scored = cat.map((t) => { let o = 0; for (const tok of t.tokens) if (q.has(tok)) o++; return { sku: t.sku, o }; }).filter((x) => x.o > 0).sort((a, b) => b.o - a.o);
+      return scored.slice(0, 5).map((x) => x.sku);
+    },
+  },
+};
 
 /** Areas with a registered (live) matcher. Offline scoring via `input.predicted` works regardless. */
 export function matchAreas(): string[] { return Object.keys(MATCHERS); }
@@ -171,8 +207,9 @@ export async function runEvalRun(admin: Admin, runId: string): Promise<void> {
       };
     } else if (evalType === "match") {
       const matcher = MATCHERS[area];
+      const ctx = matcher?.prepare ? await matcher.prepare(admin) : null; // load shared context once
       scorer = async (input, expected) => {
-        const predictedSet = matcher ? matcher(input) : asArray(input.predicted);
+        const predictedSet = matcher ? matcher.match(input, ctx) : asArray(input.predicted);
         const gold = asArray(expected?.items ?? expected?.expected ?? expected?.gold ?? expected?.label);
         const s = setScore(predictedSet, gold);
         const detail = [s.missing.length ? `missing: ${s.missing.join(", ")}` : "", s.extra.length ? `extra: ${s.extra.join(", ")}` : "", !matcher && !predictedSet.length ? "no prediction (set input.predicted or register a matcher)" : ""].filter(Boolean).join(" · ") || null;

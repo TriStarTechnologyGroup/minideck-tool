@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { touchDueDate } from "@/lib/cadence";
+import FeedbackButtons from "@/components/feedback-buttons";
 
 export type TouchData = { id: string; seq: number; day_offset: number; subject: string | null; body: string | null; status: string; sent_at: string | null };
 type Draft = { id: string; seq: number; subject: string; body: string };
@@ -115,6 +116,7 @@ export default function AccountEditor({
                 <div className="mb-1 text-xs font-medium text-ink-muted">Touch {d.seq}</div>
                 <input className="input mb-2 w-full text-sm" value={d.subject} onChange={(e) => editDraft(d.id, "subject", e.target.value)} />
                 <textarea className="input w-full font-mono text-xs" rows={6} value={d.body} onChange={(e) => editDraft(d.id, "body", e.target.value)} />
+                <div className="mt-1.5"><FeedbackButtons area="touch_quality" input={{ subject: d.subject, body: d.body, angle }} label="Rate draft:" /></div>
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-2">
