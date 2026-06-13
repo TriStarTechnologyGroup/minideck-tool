@@ -25,6 +25,7 @@ const ADMIN_NAV = [
   { href: "/admin/scoring", label: "Scoring model" },
   { href: "/admin/models", label: "AI models" },
   { href: "/admin/costs", label: "Spend" },
+  { href: "/admin/evals", label: "Evals" },
 ];
 
 export default async function AppHeader() {
