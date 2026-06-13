@@ -28,6 +28,25 @@ export async function POST(req: NextRequest) {
   ]);
   if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
 
+  // Curated, capped title set: round-robin ONE keyword per active role (priority order) per pass,
+  // deduped, capped. Dumping all ~30 ICP keywords over-constrains Clay's people search → 0 results;
+  // a tight high-signal set (one term per function first) returns the right people. Tune via /research/roles.
+  const MAX_TITLE_TERMS = 12;
+  const roleKeywords = (roles ?? []).map((r) => (r.title_keywords ?? "").split(",").map((s: string) => s.trim()).filter(Boolean));
+  const titleTerms: string[] = [];
+  const seenKw = new Set<string>();
+  for (let pass = 0; titleTerms.length < MAX_TITLE_TERMS; pass++) {
+    let added = false;
+    for (const kws of roleKeywords) {
+      if (pass >= kws.length) continue;
+      const k = kws[pass], key = k.toLowerCase();
+      if (seenKw.has(key)) continue;
+      seenKw.add(key); titleTerms.push(k); added = true;
+      if (titleTerms.length >= MAX_TITLE_TERMS) break;
+    }
+    if (!added) break; // every role exhausted
+  }
+
   const payload = {
     request_id: crypto.randomUUID(),
     company_id: company.id,
@@ -36,8 +55,8 @@ export async function POST(req: NextRequest) {
     company_type: company.type,
     verified: company.verified,
     opportunity_id: opportunity_id ?? null,
-    // Flattened for easy Clay mapping (feed straight into Find People), alongside the structured roles.
-    title_keywords: [...new Set((roles ?? []).flatMap((r) => (r.title_keywords ?? "").split(",").map((s: string) => s.trim()).filter(Boolean)))].join(", "),
+    // Curated title set (≤12 high-signal terms) for Clay's people search; structured roles still sent too.
+    title_keywords: titleTerms.join(", "),
     functions: (roles ?? []).map((r) => r.function).filter(Boolean).join(", "),
     target_roles: (roles ?? []).map((r) => ({ function: r.function, title_keywords: r.title_keywords, seniority_floor: r.seniority_floor })),
     callback_url: `${serverEnv.APP_BASE_URL}/api/contacts/clay-webhook`,
