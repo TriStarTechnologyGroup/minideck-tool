@@ -33,11 +33,12 @@ Decide from the name, email/web domain, and industry. Set confident=false ONLY w
 
 /** Classify one company into the type enum. Returns null when no key, error, or low confidence
  *  (caller keeps it 'Needs Type Defined'). */
-export async function classifyCompanyType(input: { name: string; domain?: string | null; industry?: string | null }, opts: { model?: string; logArea?: string } = {}): Promise<{ type: CompanyType; reason: string } | null> {
+export async function classifyCompanyType(input: { name: string; domain?: string | null; industry?: string | null }, opts: { model?: string; logArea?: string; logRef?: string | null } = {}): Promise<{ type: CompanyType; reason: string } | null> {
   if (!serverEnv.ANTHROPIC_API_KEY) return null;
   const client = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
   const model = opts.model ?? (await getModelFor("company_type")).model;
   const logArea = opts.logArea ?? "company_type";
+  const ref = opts.logRef ?? null;
   const t0 = Date.now();
   try {
     const res = await client.messages.parse({
@@ -47,12 +48,12 @@ export async function classifyCompanyType(input: { name: string; domain?: string
       messages: [{ role: "user", content: `Company: ${input.name}\nDomain: ${input.domain ?? "(unknown)"}\nIndustry: ${input.industry ?? "(unknown)"}` }],
       output_config: { format: zodOutputFormat(ClassResult) },
     });
-    await logLlmCall({ area: logArea, model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0 });
+    await logLlmCall({ area: logArea, model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0, ref });
     const out = res.parsed_output;
     if (!out || !out.confident) return null;
     return { type: out.type as CompanyType, reason: out.reason };
   } catch (e) {
-    await logLlmCall({ area: logArea, model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e) });
+    await logLlmCall({ area: logArea, model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e), ref });
     return null;
   }
 }

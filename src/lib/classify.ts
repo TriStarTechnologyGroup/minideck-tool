@@ -36,11 +36,12 @@ Categories:
 - "other": anything else, or genuinely unclear.
 A name like "Acme Therapeutics / Stanford University" that mixes a company and a university is "industry" if a real company is involved (the company is the buyer). Decide from the company name, email domain, and message. Keep the reason to one sentence.`;
 
-export async function classifyOrg(input: { company?: string | null; domain?: string | null; message?: string | null }, opts: { model?: string; logArea?: string } = {}): Promise<{ category: OrgCategory; reason: string | null }> {
+export async function classifyOrg(input: { company?: string | null; domain?: string | null; message?: string | null }, opts: { model?: string; logArea?: string; logRef?: string | null } = {}): Promise<{ category: OrgCategory; reason: string | null }> {
   if (!serverEnv.ANTHROPIC_API_KEY) return { category: "unknown", reason: "ANTHROPIC_API_KEY not set" };
   const client = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
   const model = opts.model ?? (await getModelFor("org_classify")).model;
   const logArea = opts.logArea ?? "org_classify";
+  const ref = opts.logRef ?? null;
   const t0 = Date.now();
   try {
     const res = await client.messages.parse({
@@ -50,11 +51,11 @@ export async function classifyOrg(input: { company?: string | null; domain?: str
       messages: [{ role: "user", content: `Company: ${input.company ?? "(unknown)"}\nEmail domain: ${input.domain ?? "(unknown)"}\nMessage: ${(input.message ?? "").slice(0, 1500)}` }],
       output_config: { format: zodOutputFormat(Result) },
     });
-    await logLlmCall({ area: logArea, model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0 });
+    await logLlmCall({ area: logArea, model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0, ref });
     const out = res.parsed_output;
     return out ? { category: out.category, reason: out.reason } : { category: "unknown", reason: "no structured output" };
   } catch (e) {
-    await logLlmCall({ area: logArea, model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e) });
+    await logLlmCall({ area: logArea, model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e), ref });
     return { category: "unknown", reason: `classify error: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
