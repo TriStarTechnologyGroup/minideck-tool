@@ -166,11 +166,11 @@ export default async function Home() {
           </div>
           {newTokens.size > 0 && <Link href="#hot-leads" className="rounded-md bg-primary/20 px-3 py-1.5 text-xs font-medium text-primary-light transition-colors hover:bg-primary/30">{newTokens.size} new lead{newTokens.size === 1 ? "" : "s"} →</Link>}
         </div>
-        <div className="mt-4 flex items-center gap-3">
-          <span className="whitespace-nowrap text-[0.65rem] uppercase tracking-wide text-white/45">Data quality</span>
+        <Link href="/companies/verify" className="group mt-4 flex items-center gap-3" title="Verify companies">
+          <span className="whitespace-nowrap text-[0.65rem] uppercase tracking-wide text-white/45 group-hover:text-white/70">Data quality</span>
           <div className="h-1.5 flex-1 overflow-hidden rounded-md bg-white/10"><div className="h-full rounded-md bg-primary" style={{ width: `${Math.max(pct(verified, companiesTotal), 1)}%` }} /></div>
-          <span className="whitespace-nowrap text-[0.65rem] text-white/55">{verified.toLocaleString()} verified · {needsType} untyped of {companiesTotal.toLocaleString()}</span>
-        </div>
+          <span className="whitespace-nowrap text-[0.65rem] text-white/55 group-hover:text-white/80">{verified.toLocaleString()} verified · {needsType} untyped · verify →</span>
+        </Link>
       </section>
 
       {/* Do this today */}

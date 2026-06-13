@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { PROSPECTABLE_COMPANY_TYPES } from "@/lib/guardrails";
 import CompaniesTable, { type CompanyRow } from "./companies-table";
 import SyncActions from "./sync-actions";
 
@@ -27,11 +29,19 @@ export default async function CompaniesPage() {
     inquiries: inqCount.get(c.id as string) ?? 0,
   })) as CompanyRow[];
 
+  const industryTypes = PROSPECTABLE_COMPANY_TYPES as readonly string[];
+  const toVerify = rows.filter((c) => industryTypes.includes(c.type) && !c.verified && !c.flagged_for_removal).length;
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-10">
       <header>
-        <p className="eyebrow">Accounts</p>
-        <h1 className="mt-1 text-3xl">Companies</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="eyebrow">Accounts</p>
+            <h1 className="mt-1 text-3xl">Companies</h1>
+          </div>
+          {toVerify > 0 && <Link href="/companies/verify" className="btn btn-primary btn-xs self-center">Verify {toVerify.toLocaleString()} industry companies →</Link>}
+        </div>
         <p className="mt-1 text-sm text-ink-muted">
           Every company in the system, synced from HubSpot. Set each company&rsquo;s type to drive prospecting
           eligibility and reporting. {rows.length.toLocaleString()} companies.
