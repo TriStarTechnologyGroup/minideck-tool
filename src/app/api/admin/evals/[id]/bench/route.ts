@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiAdmin } from "@/lib/api";
-import { runBench, classifierAreas } from "@/lib/evals";
+import { runBench, classifierAreas, judgeAreas } from "@/lib/evals";
 import { MODELS } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +28,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const admin = createAdminClient();
   const { data: ds } = await admin.from("eval_datasets").select("area, eval_type").eq("id", datasetId).maybeSingle();
   if (!ds) return NextResponse.json({ error: "Dataset not found" }, { status: 404 });
-  if (ds.eval_type !== "classification" || !classifierAreas().includes(ds.area as string)) {
-    return NextResponse.json({ error: "Bench supports classification datasets for now" }, { status: 400 });
+  const benchable =
+    (ds.eval_type === "classification" && classifierAreas().includes(ds.area as string)) ||
+    (ds.eval_type === "judge" && judgeAreas().includes(ds.area as string));
+  if (!benchable) {
+    return NextResponse.json({ error: "Bench supports model-backed datasets (classification, judge)" }, { status: 400 });
   }
   const { count } = await admin.from("eval_examples").select("id", { count: "exact", head: true }).eq("dataset_id", datasetId).eq("status", "labeled");
   if (!count) return NextResponse.json({ error: "No labeled examples to run" }, { status: 400 });

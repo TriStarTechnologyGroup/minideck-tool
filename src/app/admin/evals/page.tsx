@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { classifierAreas } from "@/lib/evals";
+import { classifierAreas, judgeAreas, assertionAreas } from "@/lib/evals";
 import EvalsCreate from "./evals-create";
 
 export const dynamic = "force-dynamic";
@@ -37,12 +37,12 @@ export default async function EvalsPage() {
         <h1 className="mt-1 text-3xl">Evals</h1>
         <p className="mt-1 text-sm text-ink-muted">
           Golden datasets for measuring decision quality (LLM + deterministic). Author examples here or
-          import a CSV, label them, then run them against any model. Runnable classification areas today:
-          {" "}{classifierAreas().join(", ")}.
+          import a CSV, label them, then run them. Four scorers: classification (vs the production
+          classifier), judge (LLM rubric), assertion (deterministic guardrails), and match (F1 vs a gold set).
         </p>
       </header>
 
-      <EvalsCreate areas={[...new Set([...classifierAreas(), "company_fit", "people_fit", "inbound_match", "opportunity_validity", "touch_quality", "dedup_match"])]} />
+      <EvalsCreate areas={[...new Set([...classifierAreas(), ...judgeAreas(), ...assertionAreas(), "inbound_match", "dedup_match"])]} />
 
       {list.length === 0 ? (
         <div className="card px-6 py-14 text-center text-sm text-ink-muted">

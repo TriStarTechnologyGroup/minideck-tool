@@ -26,11 +26,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const { count } = await admin.from("eval_examples").select("id", { count: "exact", head: true }).eq("dataset_id", datasetId).eq("status", "labeled");
   if (!count) return NextResponse.json({ error: "No labeled examples to run" }, { status: 400 });
 
-  // Assertion datasets are deterministic — no model. Classification picks the request model, else the
-  // area's configured default.
-  const model = ds.eval_type === "assertion"
+  // Assertion + match are deterministic — no model. Classification picks the request model; judge
+  // defaults to the eval_judge model; both fall back to the area's configured default.
+  const deterministic = ds.eval_type === "assertion" || ds.eval_type === "match";
+  const model = deterministic
     ? "deterministic"
-    : (parsed.success && parsed.data.model ? parsed.data.model : (await getModelFor(ds.area as string)).model);
+    : (parsed.success && parsed.data.model ? parsed.data.model : (await getModelFor(ds.eval_type === "judge" ? "eval_judge" : (ds.area as string))).model);
   try {
     const runId = await startEvalRun(admin, datasetId, model, { createdBy: guard.profile.id });
     const { data: run } = await admin.from("eval_runs").select("status, metrics, n_scored, error").eq("id", runId).maybeSingle();
