@@ -44,7 +44,7 @@ export default function EvalsCreate({ areas }: { areas: string[] }) {
         <button type="button" className="btn btn-primary btn-xs" disabled={busy || !v.name.trim()} onClick={create}>{busy ? "Creating…" : "Create"}</button>
         <button type="button" className="btn btn-ghost btn-xs" onClick={() => setOpen(false)}>Cancel</button>
       </div>
-      <p className="text-[0.7rem] text-ink-muted/70">Classification areas (company_type, org_classify) can run today; match/judge/assertion datasets store + import now, run once their scorers land (P5/P6).</p>
+      <p className="text-[0.7rem] text-ink-muted/70">All four scorers run today: <b>classification</b> (vs production classifier), <b>judge</b> (LLM rubric — fit + touch quality), <b>assertion</b> (deterministic guardrails), and <b>match</b> (precision/recall/F1 vs a gold set). Pick the area that matches the registered scorer for best results.</p>
     </div>
   );
 }

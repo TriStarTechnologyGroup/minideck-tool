@@ -6,7 +6,7 @@ import { parseCsv, toCsv, downloadCsv } from "@/lib/csv";
 
 export type Dataset = { id: string; name: string; area: string; eval_type: string; description: string | null };
 export type Example = { id: string; input: Record<string, unknown>; expected: Record<string, unknown> | null; status: string; source: string | null; notes: string | null };
-export type RunMetrics = { accuracy?: number; n?: number; correct?: number; by_class?: Record<string, { total: number; correct: number }>; cost_usd?: number; avg_latency_ms?: number | null; n_calls?: number };
+export type RunMetrics = { accuracy?: number; avg_score?: number; n?: number; correct?: number; by_class?: Record<string, { total: number; correct: number }>; cost_usd?: number; avg_latency_ms?: number | null; n_calls?: number };
 export type Run = { id: string; model: string | null; status: string; metrics: RunMetrics | null; n_examples: number | null; n_scored: number | null; error: string | null; created_at: string; bench_group: string | null };
 type BenchRow = { model: string; accuracy: number | null; cost_usd: number | null; avg_latency_ms: number | null; n: number | null; status: string };
 
@@ -14,7 +14,7 @@ const ic = "rounded-sm border border-line-strong bg-surface px-2 py-1 text-sm te
 const labelOf = (e: Example) => { const v = e.expected?.label ?? e.expected?.type ?? e.expected?.category; return v == null ? "" : String(v); };
 const inputSummary = (i: Record<string, unknown>) => Object.entries(i).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—";
 
-export default function DatasetDetail({ dataset, initialExamples, runs, models, runnable, benchable, canSetDefault }: { dataset: Dataset; initialExamples: Example[]; runs: Run[]; models: { id: string; label: string }[]; runnable: boolean; benchable: boolean; canSetDefault: boolean }) {
+export default function DatasetDetail({ dataset, initialExamples, runs, models, runnable, benchable, setDefaultArea, canSetDefault }: { dataset: Dataset; initialExamples: Example[]; runs: Run[]; models: { id: string; label: string }[]; runnable: boolean; benchable: boolean; setDefaultArea: string; canSetDefault: boolean }) {
   const router = useRouter();
   const [examples, setExamples] = useState(initialExamples);
   const [model, setModel] = useState(models[0]?.id ?? "claude-opus-4-8");
@@ -108,9 +108,9 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
     } finally { setBusy(false); }
   }
   async function setDefault(m: string) {
-    const res = await fetch(`/api/admin/models`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ area: dataset.area, model: m }) });
+    const res = await fetch(`/api/admin/models`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ area: setDefaultArea, model: m }) });
     const j = await res.json().catch(() => ({}));
-    setBenchMsg(res.ok ? `Set ${modelLabel[m] ?? m} as the default for ${dataset.area}.` : `Error: ${j.error ?? res.status}`);
+    setBenchMsg(res.ok ? `Set ${modelLabel[m] ?? m} as the default for ${setDefaultArea}.` : `Error: ${j.error ?? res.status}`);
   }
 
   const fmtCost = (c: number | null) => (c == null ? "—" : c < 0.01 ? `$${c.toFixed(4)}` : `$${c.toFixed(2)}`);
@@ -137,7 +137,7 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
           ) : runnable ? (
             <span className="chip bg-surface-muted text-ink-muted">deterministic · no model</span>
           ) : null}
-          <button type="button" className="btn btn-primary btn-xs" disabled={busy || !runnable || labeled === 0} onClick={run}>{busy ? "Running…" : benchable ? "Run eval" : "Run assertions"}</button>
+          <button type="button" className="btn btn-primary btn-xs" disabled={busy || !runnable || labeled === 0} onClick={run}>{busy ? "Running…" : dataset.eval_type === "assertion" ? "Run assertions" : dataset.eval_type === "match" ? "Run match" : dataset.eval_type === "judge" ? "Run judge" : "Run eval"}</button>
           {!runnable && <span className="text-xs text-amber-600">This area/type isn&rsquo;t runnable yet — scorer lands in a later phase (match/judge).</span>}
           {runnable && labeled === 0 && <span className="text-xs text-ink-muted">Label some examples to run.</span>}
           {msg && <span className="text-xs text-ink-muted">{msg}</span>}
@@ -145,7 +145,9 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
         {latest && (
           <div className="text-xs text-ink-muted">
             Latest: <span className={latest.status === "error" ? "text-red-600" : "text-ink"}>{latest.status}</span>
-            {latest.metrics?.accuracy != null && <> · <b className="text-ink">{(latest.metrics.accuracy * 100).toFixed(1)}%</b> ({latest.metrics.correct}/{latest.metrics.n}) · {latest.model}</>}
+            {latest.metrics?.accuracy != null && <> · <b className="text-ink">{(latest.metrics.accuracy * 100).toFixed(1)}%</b> {dataset.eval_type === "judge" ? "agree" : dataset.eval_type === "match" ? "exact" : "acc"} ({latest.metrics.correct}/{latest.metrics.n})</>}
+            {(dataset.eval_type === "judge" || dataset.eval_type === "match") && latest.metrics?.avg_score != null && <> · <b className="text-ink">{(latest.metrics.avg_score * 100).toFixed(0)}%</b> {dataset.eval_type === "match" ? "mean F1" : "mean score"}</>}
+            {latest.metrics?.accuracy != null && <> · {latest.model}</>}
             {latest.error && <> · {latest.error}</>}
             {latest.metrics?.by_class && (
               <div className="mt-1 flex flex-wrap gap-1.5">

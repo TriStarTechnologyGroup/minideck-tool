@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { MODELS, LLM_AREAS } from "@/lib/llm";
-import { classifierAreas, assertionAreas } from "@/lib/evals";
+import { classifierAreas, assertionAreas, judgeAreas } from "@/lib/evals";
 import DatasetDetail, { type Example, type Dataset, type Run } from "./dataset-detail";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,15 @@ export default async function EvalDatasetPage({ params }: Ctx) {
     supabase.from("eval_runs").select("id, model, status, metrics, n_examples, n_scored, error, created_at, bench_group").eq("dataset_id", id).order("created_at", { ascending: false }).limit(40),
   ]);
 
+  const area = ds.area as string;
+  const type = ds.eval_type as string;
+  // Runnable: the scorer for this (type, area) exists. Benchable: it's model-backed (a model choice
+  // is meaningful). match runs deterministically on offline predictions, so it's runnable here too.
+  const benchable = (type === "classification" && classifierAreas().includes(area)) || (type === "judge" && judgeAreas().includes(area));
+  const runnable = benchable || (type === "assertion" && assertionAreas().includes(area)) || type === "match";
+  // Judge model is the global eval_judge slot; otherwise the area is its own model slot (if any).
+  const setDefaultArea = type === "judge" ? "eval_judge" : area;
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <div>
@@ -38,9 +47,10 @@ export default async function EvalDatasetPage({ params }: Ctx) {
         initialExamples={(examples ?? []) as Example[]}
         runs={(runs ?? []) as Run[]}
         models={MODELS.map((m) => ({ id: m.id, label: m.label }))}
-        runnable={(classifierAreas().includes(ds.area as string) && ds.eval_type === "classification") || (assertionAreas().includes(ds.area as string) && ds.eval_type === "assertion")}
-        benchable={classifierAreas().includes(ds.area as string) && ds.eval_type === "classification"}
-        canSetDefault={LLM_AREAS.includes(ds.area as (typeof LLM_AREAS)[number])}
+        runnable={runnable}
+        benchable={benchable}
+        setDefaultArea={setDefaultArea}
+        canSetDefault={LLM_AREAS.includes(setDefaultArea as (typeof LLM_AREAS)[number])}
       />
     </main>
   );
