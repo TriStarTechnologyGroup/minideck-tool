@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env.server";
+import { normalizeDomain } from "@/lib/hubspot";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -26,6 +27,10 @@ const contactSchema = z.object({
   // person (they save unlinked) or trips the FK.
   company_id: z.string().nullish(),
   opportunity_id: z.string().nullish(),
+  // Generic linkage: a person's company domain (native to Clay's People table). When no valid
+  // company_id is passed, we resolve the company by matching this domain → companies.domain. Works
+  // for ANY company without carrying the app's UUID through Clay.
+  company_domain: z.string().nullish(),
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,11 +45,23 @@ export async function POST(req: NextRequest) {
   if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   const topCompany = typeof body.company_id === "string" ? body.company_id : null;
   const topOpp = typeof body.opportunity_id === "string" ? body.opportunity_id : null;
+  const topDomain = typeof body.company_domain === "string" ? body.company_domain : null;
   const raw = Array.isArray(body.contacts) ? body.contacts : [body];
 
   const admin = createAdminClient();
   const now = new Date().toISOString();
-  let upserted = 0, linked = 0; const errors: string[] = [];
+  // Resolve a company_id from a domain, memoized so a batch only queries each domain once.
+  const domainCache = new Map<string, string | null>();
+  const companyIdForDomain = async (raw: string | null | undefined): Promise<string | null> => {
+    const dom = normalizeDomain(raw);
+    if (!dom) return null;
+    if (domainCache.has(dom)) return domainCache.get(dom)!;
+    const { data } = await admin.from("companies").select("id").ilike("domain", dom).limit(1).maybeSingle();
+    const id = (data?.id as string) ?? null;
+    domainCache.set(dom, id);
+    return id;
+  };
+  let upserted = 0, linked = 0, companyLinked = 0; const errors: string[] = [];
 
   for (const item of raw) {
     const parsed = contactSchema.safeParse(item);
@@ -52,7 +69,8 @@ export async function POST(req: NextRequest) {
     const c = parsed.data;
     const email = (c.email || "").toLowerCase().trim();
     if (!email) { errors.push("row without email skipped"); continue; }
-    const company_id = asUuid(c.company_id) ?? asUuid(topCompany);
+    // company_id wins if valid; else resolve by the person's company domain (works for any company).
+    const company_id = asUuid(c.company_id) ?? asUuid(topCompany) ?? await companyIdForDomain(c.company_domain ?? topDomain);
     const opportunity_id = asUuid(c.opportunity_id) ?? asUuid(topOpp);
 
     const row: Record<string, unknown> = {
@@ -69,6 +87,7 @@ export async function POST(req: NextRequest) {
     const { data: up, error } = await admin.from("contacts").upsert(row, { onConflict: "email" }).select("id").maybeSingle();
     if (error) { errors.push(`${email}: ${error.message}`); continue; }
     upserted++;
+    if (company_id) companyLinked++;
     if (opportunity_id && up?.id) {
       const { error: le } = await admin.from("opportunity_contacts").upsert(
         { opportunity_id, contact_id: up.id, role: c.function ?? null, source: "clay" },
@@ -77,5 +96,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, upserted, linked, errors });
+  return NextResponse.json({ ok: true, upserted, companyLinked, linked, errors });
 }
