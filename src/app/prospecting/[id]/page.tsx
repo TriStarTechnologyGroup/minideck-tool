@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 type Company = {
   id: string; name: string; domain: string | null; website: string | null; industry: string | null;
   lifecycle_stage: string | null; owner: string | null; employees: number | null; country: string | null;
-  pipeline_program_count: number | null; notes: string | null;
+  pipeline_program_count: number | null; notes: string | null; contacts_scope_limit: number | null;
 };
 
 export default async function CompanyProspectingPage({ params }: { params: Promise<{ id: string }> }) {
@@ -21,7 +21,7 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
 
   const { data: company } = await supabase
     .from("companies")
-    .select("id, name, domain, website, industry, lifecycle_stage, owner, employees, country, pipeline_program_count, notes")
+    .select("id, name, domain, website, industry, lifecycle_stage, owner, employees, country, pipeline_program_count, notes, contacts_scope_limit")
     .eq("id", id)
     .maybeSingle();
   if (!company) notFound();
@@ -65,7 +65,7 @@ export default async function CompanyProspectingPage({ params }: { params: Promi
           <h2 className="font-display text-lg font-medium text-ink">
             Contacts <span className="font-sans text-sm font-normal text-ink-muted">({contacts.length})</span>
           </h2>
-          <ScopeContacts companyId={c.id} />
+          <ScopeContacts companyId={c.id} contactCount={contacts.length} scopeLimit={c.contacts_scope_limit} />
         </div>
         {contacts.length === 0 ? (
           <p className="card px-5 py-6 text-sm text-ink-muted">No contacts yet. Enrichment will pull decision-makers for verified companies.</p>
