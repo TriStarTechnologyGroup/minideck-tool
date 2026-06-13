@@ -13,7 +13,6 @@ const SALES_NAV = [
   { href: "/inbound", label: "Inbound" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/decks", label: "Decks" },
-  { href: "/leads", label: "Leads" },
 ];
 const CATALOG_NAV = [
   { href: "/catalog/tma", label: "TMAs" },
@@ -38,7 +37,7 @@ export default async function AppHeader() {
     <header className="sticky top-0 z-20 border-b border-white/10 bg-ink-deep">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
         <div className="flex items-center gap-7">
-          <Link href="/decks" className="flex items-center" aria-label="TriStar — Decks">
+          <Link href="/" className="flex items-center" aria-label="TriStar — Home">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/tristar-logo.svg"
