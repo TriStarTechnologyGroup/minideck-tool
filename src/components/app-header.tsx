@@ -13,6 +13,7 @@ const SALES_NAV = [
   { href: "/inbound", label: "Inbound" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/decks", label: "Decks" },
+  { href: "/digest", label: "Digest" },
 ];
 const CATALOG_NAV = [
   { href: "/catalog/tma", label: "TMAs" },
