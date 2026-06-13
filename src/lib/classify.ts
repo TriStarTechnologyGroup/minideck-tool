@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { serverEnv } from "@/lib/env.server";
+import { getModelFor, logLlmCall } from "@/lib/llm";
 
 // In-app org classification for inbound contact-form inquiries (RFQ inquiries are classified
 // by HubSpot pipeline, no AI needed). Cheap/fast Haiku tier; structured JSON via output_config.
@@ -38,17 +39,21 @@ A name like "Acme Therapeutics / Stanford University" that mixes a company and a
 export async function classifyOrg(input: { company?: string | null; domain?: string | null; message?: string | null }): Promise<{ category: OrgCategory; reason: string | null }> {
   if (!serverEnv.ANTHROPIC_API_KEY) return { category: "unknown", reason: "ANTHROPIC_API_KEY not set" };
   const client = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
+  const { model } = await getModelFor("org_classify");
+  const t0 = Date.now();
   try {
     const res = await client.messages.parse({
-      model: "claude-haiku-4-5",
+      model,
       max_tokens: 400,
       system: SYSTEM,
       messages: [{ role: "user", content: `Company: ${input.company ?? "(unknown)"}\nEmail domain: ${input.domain ?? "(unknown)"}\nMessage: ${(input.message ?? "").slice(0, 1500)}` }],
       output_config: { format: zodOutputFormat(Result) },
     });
+    await logLlmCall({ area: "org_classify", model, inputTokens: res.usage?.input_tokens, outputTokens: res.usage?.output_tokens, latencyMs: Date.now() - t0 });
     const out = res.parsed_output;
     return out ? { category: out.category, reason: out.reason } : { category: "unknown", reason: "no structured output" };
   } catch (e) {
+    await logLlmCall({ area: "org_classify", model, latencyMs: Date.now() - t0, ok: false, error: e instanceof Error ? e.message : String(e) });
     return { category: "unknown", reason: `classify error: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
