@@ -9,7 +9,7 @@ const GROUPS: Group[] = [
   { label: "Sales", items: [["/inbound", "Inbound"], ["/campaigns", "Campaigns"], ["/decks", "Decks"], ["/leads", "Leads"]] },
   { label: "Catalog", items: [["/catalog/tma", "TMAs"], ["/catalog/capabilities", "Capabilities"]] },
 ];
-const ADMIN_GROUP: Group = { label: "Admin", items: [["/admin/users", "Users"], ["/admin/audit", "Audit"], ["/admin/scoring", "Scoring"], ["/admin/models", "AI models"]] };
+const ADMIN_GROUP: Group = { label: "Admin", items: [["/admin/users", "Users"], ["/admin/audit", "Audit"], ["/admin/scoring", "Scoring"], ["/admin/models", "AI models"], ["/admin/costs", "Spend"]] };
 
 // Hamburger nav for narrow screens (below lg, where the inline nav is hidden).
 export default function MobileMenu({ isAdmin, email }: { isAdmin: boolean; email: string }) {
