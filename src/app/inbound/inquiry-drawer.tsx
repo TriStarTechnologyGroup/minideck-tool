@@ -41,6 +41,39 @@ export default function InquiryDrawer({ inquiry, onClose, onStatus }: { inquiry:
 
   const products = inquiry.requested_products ?? [];
 
+  // ── Quote ──────────────────────────────────────────────────────────────────────────────────
+  type QLine = { sku: string | null; name: string | null; ta_number: string | null; quantity: number | null; unit_price: number | null; note: string | null };
+  const [quote, setQuote] = useState<{ currency: string; line_items: QLine[]; notes: string | null; status: string } | null>(null);
+  const [qBusy, setQBusy] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const r = await fetch(`/api/inbound/${inquiry.id}/quote`);
+      if (r.ok) { const j = await r.json(); if (j.quote) setQuote({ currency: j.quote.currency, line_items: j.quote.line_items ?? [], notes: j.quote.notes, status: j.quote.status }); }
+    })();
+  }, [inquiry.id]);
+
+  async function quoteAction(body: Record<string, unknown>): Promise<boolean> {
+    setQBusy(true);
+    try {
+      const r = await fetch(`/api/inbound/${inquiry.id}/quote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (r.ok) { setQuote({ currency: j.quote.currency, line_items: j.quote.line_items ?? [], notes: j.quote.notes, status: j.quote.status }); return true; }
+      toast(j.error ?? "Quote failed"); return false;
+    } finally { setQBusy(false); }
+  }
+  const genQuote = () => quoteAction({ action: "generate" });
+  const saveQuote = async () => { if (quote && await quoteAction({ action: "save", line_items: quote.line_items, notes: quote.notes, currency: quote.currency })) toast("Quote saved"); };
+  const setLine = (i: number, patch: Partial<QLine>) => setQuote((q) => (q ? { ...q, line_items: q.line_items.map((l, idx) => (idx === i ? { ...l, ...patch } : l)) } : q));
+  const removeLine = (i: number) => setQuote((q) => (q ? { ...q, line_items: q.line_items.filter((_, idx) => idx !== i) } : q));
+  const addLine = () => setQuote((q) => (q ? { ...q, line_items: [...q.line_items, { sku: null, name: "", ta_number: null, quantity: 1, unit_price: null, note: null }] } : q));
+  const subtotal = (quote?.line_items ?? []).reduce((s, l) => s + (l.quantity ?? 0) * (l.unit_price ?? 0), 0);
+  const money = (n: number) => `${quote?.currency ?? "USD"} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  function quoteText(): string {
+    const lines = (quote?.line_items ?? []).map((l) => `• ${l.name ?? l.sku ?? "Item"}${l.ta_number ? ` (${l.ta_number})` : ""} ×${l.quantity ?? 1}${l.unit_price != null ? ` — ${money((l.quantity ?? 1) * l.unit_price)}` : ""}`);
+    return `Quote\n${lines.join("\n")}${subtotal ? `\n\nEstimated subtotal: ${money(subtotal)}` : ""}${quote?.notes ? `\n\n${quote.notes}` : ""}`;
+  }
+  const insertQuoteIntoReply = () => { if (!draft) { toast("Draft a reply first"); return; } setDraft({ ...draft, body: `${draft.body}\n\n${quoteText()}` }); toast("Quote added to reply"); };
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-deep/40" onClick={onClose}>
       <div className="flex h-full w-full max-w-xl flex-col gap-5 overflow-y-auto bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -102,6 +135,50 @@ export default function InquiryDrawer({ inquiry, onClose, onStatus }: { inquiry:
               </div>
             </div>
           )}
+        </section>
+
+        {/* Quote */}
+        <section className="flex flex-col gap-2 border-t border-line pt-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs uppercase tracking-wide text-ink-muted">Quote</h3>
+            {quote && <button className="text-xs text-link hover:underline" disabled={qBusy} onClick={genQuote}>Regenerate from request</button>}
+          </div>
+          {!quote ? (
+            <button className="btn btn-secondary btn-xs self-start" disabled={qBusy} onClick={genQuote}>{qBusy ? "Building…" : "Build quote"}</button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="overflow-x-auto rounded-md border border-line">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted"><tr><th className="px-2 py-1.5 font-medium">Item</th><th className="px-2 py-1.5 font-medium">Qty</th><th className="px-2 py-1.5 font-medium">Unit</th><th className="px-2 py-1.5 font-medium">Total</th><th className="px-2 py-1.5"></th></tr></thead>
+                  <tbody className="divide-y divide-line">
+                    {quote.line_items.length === 0 ? (
+                      <tr><td colSpan={5} className="px-2 py-3 text-center text-xs text-ink-muted">No line items — add one below.</td></tr>
+                    ) : quote.line_items.map((l, i) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1.5"><input className={`${ic} w-full`} value={l.name ?? ""} onChange={(e) => setLine(i, { name: e.target.value })} placeholder="Item" />{(l.sku || l.ta_number) && <div className="mt-0.5 font-mono text-[0.6rem] text-nav">{[l.sku, l.ta_number].filter(Boolean).join(" · ")}</div>}</td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" className={`${ic} w-16`} value={l.quantity ?? ""} onChange={(e) => setLine(i, { quantity: e.target.value === "" ? null : Number(e.target.value) })} /></td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" className={`${ic} w-24`} value={l.unit_price ?? ""} onChange={(e) => setLine(i, { unit_price: e.target.value === "" ? null : Number(e.target.value) })} placeholder="—" /></td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-ink-muted">{l.unit_price != null ? money((l.quantity ?? 1) * l.unit_price) : "—"}</td>
+                        <td className="px-2 py-1.5 text-right"><button className="text-xs text-red-500 hover:underline" onClick={() => removeLine(i)}>✕</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between">
+                <button className="text-xs text-link hover:underline" onClick={addLine}>+ Add line</button>
+                <span className="text-sm text-ink">Subtotal: <b>{money(subtotal)}</b></span>
+              </div>
+              <textarea className={`${ic} w-full`} rows={2} value={quote.notes ?? ""} onChange={(e) => setQuote((q) => (q ? { ...q, notes: e.target.value } : q))} placeholder="Quote notes (terms, lead time, caveats)…" />
+              <div className="flex flex-wrap items-center gap-2">
+                <button className="btn btn-primary btn-xs" disabled={qBusy} onClick={saveQuote}>{qBusy ? "Saving…" : "Save quote"}</button>
+                <button className="btn btn-ghost btn-xs" onClick={insertQuoteIntoReply}>Insert into reply</button>
+                <button className="btn btn-ghost btn-xs" onClick={() => { navigator.clipboard?.writeText(quoteText()); toast("Quote copied"); }}>Copy</button>
+                <button className="btn btn-secondary btn-xs ml-auto" onClick={() => setStatus("quoted")}>Mark quoted</button>
+              </div>
+            </div>
+          )}
+          <p className="text-[0.7rem] text-ink-muted/70">Prices pre-fill from the HubSpot deal when available — there&rsquo;s no standing price list, so edit as needed. Totals are indicative.</p>
         </section>
       </div>
     </div>
