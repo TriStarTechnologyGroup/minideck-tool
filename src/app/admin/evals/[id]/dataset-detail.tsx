@@ -14,7 +14,7 @@ const ic = "rounded-sm border border-line-strong bg-surface px-2 py-1 text-sm te
 const labelOf = (e: Example) => { const v = e.expected?.label ?? e.expected?.type ?? e.expected?.category; return v == null ? "" : String(v); };
 const inputSummary = (i: Record<string, unknown>) => Object.entries(i).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—";
 
-export default function DatasetDetail({ dataset, initialExamples, runs, models, runnable, canSetDefault }: { dataset: Dataset; initialExamples: Example[]; runs: Run[]; models: { id: string; label: string }[]; runnable: boolean; canSetDefault: boolean }) {
+export default function DatasetDetail({ dataset, initialExamples, runs, models, runnable, benchable, canSetDefault }: { dataset: Dataset; initialExamples: Example[]; runs: Run[]; models: { id: string; label: string }[]; runnable: boolean; benchable: boolean; canSetDefault: boolean }) {
   const router = useRouter();
   const [examples, setExamples] = useState(initialExamples);
   const [model, setModel] = useState(models[0]?.id ?? "claude-opus-4-8");
@@ -132,9 +132,13 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
       <section className="card flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-ink">Run</span>
-          <select className={ic} value={model} onChange={(e) => setModel(e.target.value)} disabled={!runnable}>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
-          <button type="button" className="btn btn-primary btn-xs" disabled={busy || !runnable || labeled === 0} onClick={run}>{busy ? "Running…" : "Run eval"}</button>
-          {!runnable && <span className="text-xs text-amber-600">This area/type isn&rsquo;t runnable yet — scorer lands in a later phase (match/judge/assertion).</span>}
+          {benchable ? (
+            <select className={ic} value={model} onChange={(e) => setModel(e.target.value)} disabled={!runnable}>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
+          ) : runnable ? (
+            <span className="chip bg-surface-muted text-ink-muted">deterministic · no model</span>
+          ) : null}
+          <button type="button" className="btn btn-primary btn-xs" disabled={busy || !runnable || labeled === 0} onClick={run}>{busy ? "Running…" : benchable ? "Run eval" : "Run assertions"}</button>
+          {!runnable && <span className="text-xs text-amber-600">This area/type isn&rsquo;t runnable yet — scorer lands in a later phase (match/judge).</span>}
           {runnable && labeled === 0 && <span className="text-xs text-ink-muted">Label some examples to run.</span>}
           {msg && <span className="text-xs text-ink-muted">{msg}</span>}
         </div>
@@ -153,7 +157,7 @@ export default function DatasetDetail({ dataset, initialExamples, runs, models, 
       </section>
 
       {/* Model bench */}
-      {runnable && (
+      {benchable && (
         <section className="card flex flex-col gap-3 p-4">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-sm font-medium text-ink">Model bench</span>

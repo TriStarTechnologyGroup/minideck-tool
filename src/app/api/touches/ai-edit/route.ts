@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiUser } from "@/lib/api";
 import { serverEnv } from "@/lib/env.server";
 import { getModelFor, logLlmCall } from "@/lib/llm";
+import { redactPii } from "@/lib/guardrails";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -48,11 +49,13 @@ export async function POST(req: NextRequest) {
   const touches = touchRows ?? [];
   if (!touches.length) return NextResponse.json({ error: "No matching touches" }, { status: 404 });
 
+  // Redact PII (emails/phones/SSNs) from the enrichment-derived account context before it reaches the
+  // model. Touch bodies + the user's instruction are author-controlled and passed through as-is.
   const userMsg = [
     `Account: ${account.name}`,
-    account.research ? `Verified research:\n${account.research}` : "",
-    account.context ? `Context:\n${account.context}` : "",
-    account.angle ? `Angle & hooks:\n${account.angle}` : "",
+    account.research ? `Verified research:\n${redactPii(account.research)}` : "",
+    account.context ? `Context:\n${redactPii(account.context)}` : "",
+    account.angle ? `Angle & hooks:\n${redactPii(account.angle)}` : "",
     "",
     "Touches to revise:",
     ...touches.map((t) => `--- Touch ${t.seq} (id: ${t.id}, day +${t.day_offset}) ---\nSubject: ${t.subject ?? "(empty)"}\nBody:\n${t.body ?? "(empty)"}`),

@@ -21,12 +21,16 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const parsed = input.safeParse(await req.json().catch(() => ({})));
   const admin = createAdminClient();
 
-  const { data: ds } = await admin.from("eval_datasets").select("area").eq("id", datasetId).maybeSingle();
+  const { data: ds } = await admin.from("eval_datasets").select("area, eval_type").eq("id", datasetId).maybeSingle();
   if (!ds) return NextResponse.json({ error: "Dataset not found" }, { status: 404 });
   const { count } = await admin.from("eval_examples").select("id", { count: "exact", head: true }).eq("dataset_id", datasetId).eq("status", "labeled");
   if (!count) return NextResponse.json({ error: "No labeled examples to run" }, { status: 400 });
 
-  const model = parsed.success && parsed.data.model ? parsed.data.model : (await getModelFor(ds.area as string)).model;
+  // Assertion datasets are deterministic — no model. Classification picks the request model, else the
+  // area's configured default.
+  const model = ds.eval_type === "assertion"
+    ? "deterministic"
+    : (parsed.success && parsed.data.model ? parsed.data.model : (await getModelFor(ds.area as string)).model);
   try {
     const runId = await startEvalRun(admin, datasetId, model, { createdBy: guard.profile.id });
     const { data: run } = await admin.from("eval_runs").select("status, metrics, n_scored, error").eq("id", runId).maybeSingle();

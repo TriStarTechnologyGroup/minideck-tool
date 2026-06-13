@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchRfqDeals, fetchFormSubmissions, fetchDealLineItems, isHubspotConfigured, type RfqDeal } from "@/lib/hubspot";
 import { classifyOrg, classifyByDomain, type OrgCategory } from "@/lib/classify";
+import { prospectEligible } from "@/lib/guardrails";
 import { draftOpportunityForInquiry } from "@/lib/inbound-opportunity";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -28,9 +29,9 @@ type Resolved = { classification: OrgCategory; classification_reason: string | n
 async function resolveClassification(opts: { academicPipeline?: boolean; company?: string | null; domain?: string | null; message?: string | null }): Promise<Resolved> {
   if (opts.academicPipeline) return { classification: "academia", classification_reason: "HubSpot Academic pipeline", prospect_eligible: false };
   const ruled = classifyByDomain(opts.domain);
-  if (ruled) return { classification: ruled, classification_reason: `domain rule (${opts.domain})`, prospect_eligible: ruled === "industry" };
+  if (ruled) return { classification: ruled, classification_reason: `domain rule (${opts.domain})`, prospect_eligible: prospectEligible(ruled) };
   const c = await classifyOrg({ company: opts.company, domain: opts.domain, message: opts.message });
-  return { classification: c.category, classification_reason: c.reason, prospect_eligible: c.category === "industry" };
+  return { classification: c.category, classification_reason: c.reason, prospect_eligible: prospectEligible(c.category) };
 }
 
 /** Upsert one inquiry by (hubspot_object_type, hubspot_object_id). HubSpot-sourced fields refresh
