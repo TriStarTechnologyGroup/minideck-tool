@@ -10,7 +10,11 @@ export const dynamic = "force-dynamic";
 // intake webhook). Clay finds + enriches decision-makers matching our active ICP roles and posts
 // them back to /api/contacts/clay-webhook. On-demand only (cost-conscious): you trigger this for a
 // company/opportunity you specifically want to engage.
-const input = z.object({ company_id: z.string().uuid(), opportunity_id: z.string().uuid().nullish() });
+const input = z.object({
+  company_id: z.string().uuid(),
+  opportunity_id: z.string().uuid().nullish(),
+  limit: z.number().int().min(1).max(2000).optional(),
+});
 
 export async function POST(req: NextRequest) {
   const guard = await requireApiUser();
@@ -20,6 +24,7 @@ export async function POST(req: NextRequest) {
   const parsed = input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   const { company_id, opportunity_id } = parsed.data;
+  const limit = parsed.data.limit ?? 100;
 
   const admin = createAdminClient();
   const [{ data: company }, { data: roles }] = await Promise.all([
@@ -55,6 +60,8 @@ export async function POST(req: NextRequest) {
     company_type: company.type,
     verified: company.verified,
     opportunity_id: opportunity_id ?? null,
+    // Max people per company for Clay's Find People (cost control + the expandable dataset).
+    limit,
     // Curated title set (≤12 high-signal terms) for Clay's people search; structured roles still sent too.
     title_keywords: titleTerms.join(", "),
     functions: (roles ?? []).map((r) => r.function).filter(Boolean).join(", "),
@@ -65,7 +72,9 @@ export async function POST(req: NextRequest) {
   try {
     const res = await fetch(serverEnv.CLAY_INTAKE_WEBHOOK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) return NextResponse.json({ error: `Clay intake responded ${res.status}: ${(await res.text()).slice(0, 300)}` }, { status: 502 });
-    return NextResponse.json({ ok: true, request_id: payload.request_id, roles: payload.target_roles.length });
+    // Remember the cap requested so the company page can show "more available" + offer to expand.
+    await admin.from("companies").update({ contacts_scope_limit: limit }).eq("id", company_id);
+    return NextResponse.json({ ok: true, request_id: payload.request_id, roles: payload.target_roles.length, limit });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "scope request failed" }, { status: 502 });
   }
